@@ -8,6 +8,14 @@ export default defineConfig({
     port: 5180,
     strictPort: false,
   },
+  // Railway serves the built site via `vite preview`; bind to $PORT and trust
+  // the Railway-assigned domain. allowedHosts:true is acceptable here — this is
+  // a single-user dashboard with no host-header-sensitive logic.
+  preview: {
+    host: true,
+    port: Number(process.env.PORT) || 4173,
+    allowedHosts: true,
+  },
   test: {
     globals: true,
     environment: 'jsdom',
