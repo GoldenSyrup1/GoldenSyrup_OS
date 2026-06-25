@@ -94,6 +94,14 @@ export const milestones: Milestone[] = [
   { id: 'rapid-agent-hack', title: 'Google Cloud Rapid Agent Hackathon (DutyBreak, $30K)', kind: 'hackathon', date: '2026-06-12', status: 'progress', detail: 'DutyBreak — AI duty/compliance layer for WEPort' },
 ]
 
-export const jobs: JobApplication[] = []
+// Sample rows so the views are demonstrable — replace with real entries.
+export const jobs: JobApplication[] = [
+  { id: 'j1', company: 'Atlassian', role: 'Associate SWE (grad)', stage: 'applied', updated: '2026-06-20' },
+  { id: 'j2', company: 'Canva', role: 'Software Engineer Intern', stage: 'interviewing', updated: '2026-06-24' },
+  { id: 'j3', company: 'Stripe', role: 'New Grad Engineer', stage: 'researching', updated: '2026-06-18' },
+]
 
-export const trades: EthTrade[] = []
+export const trades: EthTrade[] = [
+  { id: 't1', side: 'long', entry: 2400, size: 1.5, status: 'open', note: 'swing' },
+  { id: 't2', side: 'short', entry: 3100, size: 0.5, status: 'closed', pnlUsd: 180 },
+]
