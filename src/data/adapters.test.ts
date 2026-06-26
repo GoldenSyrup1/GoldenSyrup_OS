@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   applyPillarSignals,
   applyProjectSignals,
-  deriveWeportSignal,
-  parseWeportHealth,
+  deriveHealthSignal,
+  parseHealth,
   normalizeMemories,
   parseEthPrice,
 } from './adapters'
@@ -51,30 +51,39 @@ describe('applyProjectSignals', () => {
   })
 })
 
-describe('parseWeportHealth', () => {
-  it('reads status/version/database from the /api/health payload', () => {
-    expect(parseWeportHealth({ status: 'ok', version: '2.0.0', database: 'postgresql' })).toEqual({
+describe('parseHealth', () => {
+  it('reads status/service/version/database from a health payload', () => {
+    expect(parseHealth({ status: 'ok', service: 'auth-service', version: '2.0.0', database: 'postgresql' })).toEqual({
       ok: true,
+      service: 'auth-service',
       version: '2.0.0',
       database: 'postgresql',
     })
   })
   it('is not ok for missing/garbage payloads', () => {
-    expect(parseWeportHealth({}).ok).toBe(false)
-    expect(parseWeportHealth(null).ok).toBe(false)
-    expect(parseWeportHealth('nope').ok).toBe(false)
+    expect(parseHealth({}).ok).toBe(false)
+    expect(parseHealth(null).ok).toBe(false)
+    expect(parseHealth('nope').ok).toBe(false)
   })
 })
 
-describe('deriveWeportSignal', () => {
+describe('deriveHealthSignal', () => {
   it('reports live with version + db detail when healthy', () => {
-    const s = deriveWeportSignal({ ok: true, version: '2.0.0', database: 'postgresql' })
+    const s = deriveHealthSignal('weport', { ok: true, version: '2.0.0', database: 'postgresql' })
     expect(s).toMatchObject({ id: 'weport', status: 'live' })
     expect(s.summary).toContain('v2.0.0')
     expect(s.summary).toContain('postgresql')
   })
-  it('reports blocked when not ok', () => {
-    expect(deriveWeportSignal({ ok: false })).toMatchObject({ id: 'weport', status: 'blocked' })
+  it('falls back to the service name when no version/db', () => {
+    const s = deriveHealthSignal('stall-in', { ok: true, service: 'auth-service' })
+    expect(s).toMatchObject({ id: 'stall-in', status: 'live' })
+    expect(s.summary).toContain('auth-service')
+  })
+  it('reports blocked when not ok, keeping the given id', () => {
+    expect(deriveHealthSignal('claude-connector', { ok: false })).toMatchObject({
+      id: 'claude-connector',
+      status: 'blocked',
+    })
   })
 })
 

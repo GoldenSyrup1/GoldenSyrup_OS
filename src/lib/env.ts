@@ -3,6 +3,7 @@
 export const env = {
   intelBase: (import.meta.env.VITE_INTEL_API_BASE ?? '').replace(/\/$/, ''),
   weportBase: (import.meta.env.VITE_WEPORT_API_BASE ?? '').replace(/\/$/, ''),
+  stallInBase: (import.meta.env.VITE_STALLIN_API_BASE ?? '').replace(/\/$/, ''),
   connectorBase: (import.meta.env.VITE_CONNECTOR_API_BASE ?? '').replace(/\/$/, ''),
   connectorToken: import.meta.env.VITE_CONNECTOR_READ_TOKEN ?? '',
 }

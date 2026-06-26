@@ -7,7 +7,7 @@ import {
   fetchPillarSignals,
   fetchRecentMemories,
   fetchEthPrice,
-  fetchWeportStatus,
+  fetchProjectSignals,
   type MemoryItem,
 } from '../data/adapters'
 
@@ -51,18 +51,18 @@ export function useLiveData(): LiveData {
       fetchPillarSignals(),
       fetchRecentMemories(),
       fetchEthPrice(),
-      fetchWeportStatus(),
+      fetchProjectSignals(),
     ])
     if (cancelledRef.current) return
-    const [signals, memories, price, weport] = results
+    const [signals, memories, price, projectSignals] = results
 
     let anyLive = false
     if (signals.status === 'fulfilled' && signals.value.length > 0) {
       setPillars(applyPillarSignals(seedPillars, signals.value))
       anyLive = true
     }
-    if (weport.status === 'fulfilled' && weport.value.length > 0) {
-      setProjects(applyProjectSignals(seedProjects, weport.value))
+    if (projectSignals.status === 'fulfilled' && projectSignals.value.length > 0) {
+      setProjects(applyProjectSignals(seedProjects, projectSignals.value))
       anyLive = true
     }
     if (memories.status === 'fulfilled' && memories.value.length > 0) {

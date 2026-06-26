@@ -89,34 +89,62 @@ export function applyProjectSignals(projects: Project[], signals: ProjectSignal[
   })
 }
 
-/** Parsed shape of WEPort's GET /api/health payload. */
-export interface WeportHealth {
+/**
+ * Parsed shape of a project health endpoint. Every GoldenSyrup backend follows the
+ * same convention — JSON `{status:"ok", ...}` — so one parser covers them all:
+ * WEPort /api/health ({status,service,version,database}), Stall-In /health
+ * ({status,service}), claude_connector /api/health ({status}).
+ */
+export interface ProjectHealth {
   ok: boolean
+  service?: string
   version?: string
   database?: string
 }
 
-/** Defensively read WEPort's {status:"ok", version, database} health payload. */
-export function parseWeportHealth(raw: unknown): WeportHealth {
+/** Defensively read a `{status:"ok", ...}` health payload. */
+export function parseHealth(raw: unknown): ProjectHealth {
   const o = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
+  const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
   return {
     ok: o.status === 'ok',
-    version: typeof o.version === 'string' ? o.version : undefined,
-    database: typeof o.database === 'string' ? o.database : undefined,
+    service: str(o.service),
+    version: str(o.version),
+    database: str(o.database),
   }
 }
 
 /**
- * Map a WEPort health result onto a ProjectSignal. A healthy API means the live
- * PCS demo is up (tile shows version + DB); an unhealthy/unreachable one downgrades
- * the tile to blocked so the dashboard surfaces an outage instead of stale "live".
+ * Map a health result onto a project tile signal. A healthy API lights the tile
+ * `live` (with version/db/service detail); an unhealthy or unreachable one
+ * downgrades it to `blocked` so the dashboard surfaces an outage, never stale "live".
  */
-export function deriveWeportSignal(health: WeportHealth): ProjectSignal {
+export function deriveHealthSignal(id: string, health: ProjectHealth): ProjectSignal {
   if (!health.ok) {
-    return { id: 'weport', status: 'blocked', summary: 'Backend unreachable — /api/health not OK' }
+    return { id, status: 'blocked', summary: 'Backend unreachable — health check failed' }
   }
-  const detail = [health.version && `v${health.version}`, health.database].filter(Boolean).join(' · ')
-  return { id: 'weport', status: 'live', summary: `Backend live${detail ? ` · ${detail}` : ''}` }
+  const parts = [health.version && `v${health.version}`, health.database].filter(Boolean)
+  const detail = parts.length ? parts.join(' · ') : (health.service ?? '')
+  return { id, status: 'live', summary: `Backend live${detail ? ` · ${detail}` : ''}` }
+}
+
+/** A configured project health source: tile id → JSON health URL. */
+export interface HealthSource {
+  id: string
+  url: string
+}
+
+/**
+ * Health sources resolved from env — dormant entries are omitted, so a default
+ * checkout probes nothing and the seed layer shows through unchanged. Tile ids
+ * match the seeded project ids so signals overlay correctly.
+ */
+export function healthSources(): HealthSource[] {
+  const sources: HealthSource[] = []
+  if (env.weportBase) sources.push({ id: 'weport', url: `${env.weportBase}/api/health` })
+  if (env.connectorBase) sources.push({ id: 'claude-connector', url: `${env.connectorBase}/api/health` })
+  if (env.stallInBase) sources.push({ id: 'stall-in', url: `${env.stallInBase}/health` })
+  return sources
 }
 
 /** Defensively normalise an /api/memory response into MemoryItem[]. */
@@ -182,18 +210,23 @@ export async function fetchEthPrice(): Promise<number | null> {
 }
 
 /**
- * Probe the WEPort backend's GET /api/health and report a live/blocked signal for
- * the weport tile. Dormant (returns []) until VITE_WEPORT_API_BASE is set, so it
- * never changes the seed layer in a default checkout. NOTE: WEPort locks CORS to a
- * fixed origin list — the dashboard's deployed origin must be added there or the
- * cross-origin fetch is blocked and the tile reports blocked despite a live API.
+ * Probe every configured project health endpoint in parallel and return a tile
+ * signal for each. Best-effort: a failed/blocked fetch becomes a `blocked` signal
+ * rather than throwing. Returns [] when no sources are configured.
+ *
+ * NOTE: these are cross-origin browser fetches. Each backend must include the
+ * dashboard's deployed origin in its CORS allow-list or the fetch is blocked and
+ * the tile reports `blocked` despite a live API (WEPort allows goldensyrup1.github.io).
  */
-export async function fetchWeportStatus(): Promise<ProjectSignal[]> {
-  if (!env.weportBase) return []
-  try {
-    const raw = await fetchJson<unknown>(`${env.weportBase}/api/health`, { timeoutMs: 6000 })
-    return [deriveWeportSignal(parseWeportHealth(raw))]
-  } catch {
-    return [deriveWeportSignal({ ok: false })]
-  }
+export async function fetchProjectSignals(): Promise<ProjectSignal[]> {
+  const sources = healthSources()
+  if (sources.length === 0) return []
+  const settled = await Promise.allSettled(
+    sources.map(async (s) =>
+      deriveHealthSignal(s.id, parseHealth(await fetchJson<unknown>(s.url, { timeoutMs: 6000 }))),
+    ),
+  )
+  return settled.map((r, i) =>
+    r.status === 'fulfilled' ? r.value : deriveHealthSignal(sources[i].id, { ok: false }),
+  )
 }
