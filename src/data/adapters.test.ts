@@ -3,6 +3,7 @@ import {
   applyPillarSignals,
   applyProjectSignals,
   deriveWeportSignal,
+  parseWeportHealth,
   normalizeMemories,
   parseEthPrice,
 } from './adapters'
@@ -50,10 +51,30 @@ describe('applyProjectSignals', () => {
   })
 })
 
+describe('parseWeportHealth', () => {
+  it('reads status/version/database from the /api/health payload', () => {
+    expect(parseWeportHealth({ status: 'ok', version: '2.0.0', database: 'postgresql' })).toEqual({
+      ok: true,
+      version: '2.0.0',
+      database: 'postgresql',
+    })
+  })
+  it('is not ok for missing/garbage payloads', () => {
+    expect(parseWeportHealth({}).ok).toBe(false)
+    expect(parseWeportHealth(null).ok).toBe(false)
+    expect(parseWeportHealth('nope').ok).toBe(false)
+  })
+})
+
 describe('deriveWeportSignal', () => {
-  it('reports live when reachable and blocked when not', () => {
-    expect(deriveWeportSignal(true)).toMatchObject({ id: 'weport', status: 'live' })
-    expect(deriveWeportSignal(false)).toMatchObject({ id: 'weport', status: 'blocked' })
+  it('reports live with version + db detail when healthy', () => {
+    const s = deriveWeportSignal({ ok: true, version: '2.0.0', database: 'postgresql' })
+    expect(s).toMatchObject({ id: 'weport', status: 'live' })
+    expect(s.summary).toContain('v2.0.0')
+    expect(s.summary).toContain('postgresql')
+  })
+  it('reports blocked when not ok', () => {
+    expect(deriveWeportSignal({ ok: false })).toMatchObject({ id: 'weport', status: 'blocked' })
   })
 })
 

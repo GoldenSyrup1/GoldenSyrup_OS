@@ -89,15 +89,34 @@ export function applyProjectSignals(projects: Project[], signals: ProjectSignal[
   })
 }
 
+/** Parsed shape of WEPort's GET /api/health payload. */
+export interface WeportHealth {
+  ok: boolean
+  version?: string
+  database?: string
+}
+
+/** Defensively read WEPort's {status:"ok", version, database} health payload. */
+export function parseWeportHealth(raw: unknown): WeportHealth {
+  const o = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
+  return {
+    ok: o.status === 'ok',
+    version: typeof o.version === 'string' ? o.version : undefined,
+    database: typeof o.database === 'string' ? o.database : undefined,
+  }
+}
+
 /**
- * Map a WEPort backend health probe onto a ProjectSignal. A reachable Flask API
- * means the live PCS demo is up; an unreachable one downgrades the tile to blocked
- * so the dashboard surfaces an outage instead of silently showing stale "live".
+ * Map a WEPort health result onto a ProjectSignal. A healthy API means the live
+ * PCS demo is up (tile shows version + DB); an unhealthy/unreachable one downgrades
+ * the tile to blocked so the dashboard surfaces an outage instead of stale "live".
  */
-export function deriveWeportSignal(reachable: boolean): ProjectSignal {
-  return reachable
-    ? { id: 'weport', status: 'live', summary: 'Backend reachable · live PCS demo' }
-    : { id: 'weport', status: 'blocked', summary: 'Backend unreachable — API not responding' }
+export function deriveWeportSignal(health: WeportHealth): ProjectSignal {
+  if (!health.ok) {
+    return { id: 'weport', status: 'blocked', summary: 'Backend unreachable — /api/health not OK' }
+  }
+  const detail = [health.version && `v${health.version}`, health.database].filter(Boolean).join(' · ')
+  return { id: 'weport', status: 'live', summary: `Backend live${detail ? ` · ${detail}` : ''}` }
 }
 
 /** Defensively normalise an /api/memory response into MemoryItem[]. */
@@ -162,28 +181,19 @@ export async function fetchEthPrice(): Promise<number | null> {
   }
 }
 
-/** True if the URL answers with any HTTP response (even 4xx) before the timeout. */
-async function probeOk(url: string, timeoutMs = 6000): Promise<boolean> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const res = await fetch(url, { signal: controller.signal })
-    return res.ok
-  } catch {
-    return false
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
 /**
- * Probe the WEPort backend and report a live/blocked signal for the weport tile.
- * Dormant (returns []) until VITE_WEPORT_API_BASE is set, so it never changes the
- * seed layer in a default checkout. Tries /health first, then the API root.
+ * Probe the WEPort backend's GET /api/health and report a live/blocked signal for
+ * the weport tile. Dormant (returns []) until VITE_WEPORT_API_BASE is set, so it
+ * never changes the seed layer in a default checkout. NOTE: WEPort locks CORS to a
+ * fixed origin list — the dashboard's deployed origin must be added there or the
+ * cross-origin fetch is blocked and the tile reports blocked despite a live API.
  */
 export async function fetchWeportStatus(): Promise<ProjectSignal[]> {
   if (!env.weportBase) return []
-  const reachable =
-    (await probeOk(`${env.weportBase}/health`)) || (await probeOk(`${env.weportBase}/`))
-  return [deriveWeportSignal(reachable)]
+  try {
+    const raw = await fetchJson<unknown>(`${env.weportBase}/api/health`, { timeoutMs: 6000 })
+    return [deriveWeportSignal(parseWeportHealth(raw))]
+  } catch {
+    return [deriveWeportSignal({ ok: false })]
+  }
 }
