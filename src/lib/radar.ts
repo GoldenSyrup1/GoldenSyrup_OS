@@ -36,5 +36,7 @@ export function pointsToString(points: Point[]): string {
 }
 
 function round(n: number): number {
-  return Math.round(n * 100) / 100
+  // Nudge by one ulp so exact halves (e.g. 1.005) round up instead of being
+  // dragged down by binary float representation (1.005*100 === 100.4999…).
+  return Math.round((n + Number.EPSILON) * 100) / 100
 }

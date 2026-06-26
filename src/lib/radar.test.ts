@@ -7,8 +7,8 @@ describe('radar geometry', () => {
   })
 
   it('spaces n axes evenly around the circle', () => {
-    expect(axisAngle(2, 4)).toBe(0) // quarter turn -> east
-    expect(axisAngle(1, 4)).toBe(-90 + 90)
+    expect(axisAngle(1, 4)).toBe(0) // quarter turn from top -> east
+    expect(axisAngle(2, 4)).toBe(90) // half turn from top -> south
   })
 
   it('polarPoint at the top spoke goes straight up', () => {

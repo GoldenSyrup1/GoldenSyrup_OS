@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Pillar } from '../types'
-import { pillars as seedPillars } from '../data/seed'
+import type { Pillar, Project } from '../types'
+import { pillars as seedPillars, projects as seedProjects } from '../data/seed'
 import {
   applyPillarSignals,
+  applyProjectSignals,
   fetchPillarSignals,
   fetchRecentMemories,
   fetchEthPrice,
+  fetchWeportStatus,
   type MemoryItem,
 } from '../data/adapters'
 
@@ -16,6 +18,7 @@ const POLL_MS = 90_000
 
 export interface LiveData {
   pillars: Pillar[]
+  projects: Project[]
   activity: MemoryItem[]
   ethPrice: number | null
   state: LiveState
@@ -34,6 +37,7 @@ export interface LiveData {
  */
 export function useLiveData(): LiveData {
   const [pillars, setPillars] = useState<Pillar[]>(seedPillars)
+  const [projects, setProjects] = useState<Project[]>(seedProjects)
   const [activity, setActivity] = useState<MemoryItem[]>([])
   const [ethPrice, setEthPrice] = useState<number | null>(null)
   const [state, setState] = useState<LiveState>('loading')
@@ -47,13 +51,18 @@ export function useLiveData(): LiveData {
       fetchPillarSignals(),
       fetchRecentMemories(),
       fetchEthPrice(),
+      fetchWeportStatus(),
     ])
     if (cancelledRef.current) return
-    const [signals, memories, price] = results
+    const [signals, memories, price, weport] = results
 
     let anyLive = false
     if (signals.status === 'fulfilled' && signals.value.length > 0) {
       setPillars(applyPillarSignals(seedPillars, signals.value))
+      anyLive = true
+    }
+    if (weport.status === 'fulfilled' && weport.value.length > 0) {
+      setProjects(applyProjectSignals(seedProjects, weport.value))
       anyLive = true
     }
     if (memories.status === 'fulfilled' && memories.value.length > 0) {
@@ -79,5 +88,5 @@ export function useLiveData(): LiveData {
     }
   }, [load])
 
-  return { pillars, activity, ethPrice, state, lastUpdated, refreshing, refresh: load }
+  return { pillars, projects, activity, ethPrice, state, lastUpdated, refreshing, refresh: load }
 }

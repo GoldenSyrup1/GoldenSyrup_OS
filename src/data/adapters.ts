@@ -3,7 +3,7 @@
 // are unit-tested; the fetchers fall back to the seed layer on any failure so the
 // dashboard always renders.
 
-import type { Pillar, Status } from '../types'
+import type { Pillar, Project, Status } from '../types'
 import { clampProgress } from '../lib/util'
 import { env, ETH_PRICE_URL } from '../lib/env'
 
@@ -12,6 +12,15 @@ export interface PillarSignal {
   signal?: string
   progress?: number
   status?: Status
+}
+
+/** A live status overlay for one project tile, matched by project id. */
+export interface ProjectSignal {
+  id: string
+  status?: Status
+  progress?: number
+  summary?: string
+  nextAction?: string
 }
 
 /** A claude_connector memory item (shape per /api/memory). */
@@ -59,6 +68,36 @@ export function applyPillarSignals(pillars: Pillar[], signals: PillarSignal[]): 
       progress: typeof s.progress === 'number' ? clampProgress(s.progress) : p.progress,
     }
   })
+}
+
+/** Overlay live project signals onto seeded projects, matching by id. */
+export function applyProjectSignals(projects: Project[], signals: ProjectSignal[]): Project[] {
+  const byId = new Map<string, ProjectSignal>()
+  for (const s of signals) {
+    if (s?.id) byId.set(String(s.id).toLowerCase(), s)
+  }
+  return projects.map((p) => {
+    const s = byId.get(p.id.toLowerCase())
+    if (!s) return p
+    return {
+      ...p,
+      status: s.status ?? p.status,
+      progress: typeof s.progress === 'number' ? clampProgress(s.progress) : p.progress,
+      summary: s.summary ?? p.summary,
+      nextAction: s.nextAction ?? p.nextAction,
+    }
+  })
+}
+
+/**
+ * Map a WEPort backend health probe onto a ProjectSignal. A reachable Flask API
+ * means the live PCS demo is up; an unreachable one downgrades the tile to blocked
+ * so the dashboard surfaces an outage instead of silently showing stale "live".
+ */
+export function deriveWeportSignal(reachable: boolean): ProjectSignal {
+  return reachable
+    ? { id: 'weport', status: 'live', summary: 'Backend reachable · live PCS demo' }
+    : { id: 'weport', status: 'blocked', summary: 'Backend unreachable — API not responding' }
 }
 
 /** Defensively normalise an /api/memory response into MemoryItem[]. */
@@ -121,4 +160,30 @@ export async function fetchEthPrice(): Promise<number | null> {
   } catch {
     return null
   }
+}
+
+/** True if the URL answers with any HTTP response (even 4xx) before the timeout. */
+async function probeOk(url: string, timeoutMs = 6000): Promise<boolean> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, { signal: controller.signal })
+    return res.ok
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Probe the WEPort backend and report a live/blocked signal for the weport tile.
+ * Dormant (returns []) until VITE_WEPORT_API_BASE is set, so it never changes the
+ * seed layer in a default checkout. Tries /health first, then the API root.
+ */
+export async function fetchWeportStatus(): Promise<ProjectSignal[]> {
+  if (!env.weportBase) return []
+  const reachable =
+    (await probeOk(`${env.weportBase}/health`)) || (await probeOk(`${env.weportBase}/`))
+  return [deriveWeportSignal(reachable)]
 }

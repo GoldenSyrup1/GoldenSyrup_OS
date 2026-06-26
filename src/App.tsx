@@ -1,4 +1,4 @@
-import { contacts, milestones, jobs, projects, trades } from './data/seed'
+import { contacts, milestones, jobs, trades } from './data/seed'
 import { aggregateProgress, statusBreakdown } from './lib/util'
 import { useLiveData } from './hooks/useLiveData'
 import { Card, SectionTitle } from './components/Card'
@@ -25,7 +25,8 @@ function formatUpdated(ts: number | null): string {
 }
 
 export default function App() {
-  const { pillars, activity, ethPrice, state, lastUpdated, refreshing, refresh } = useLiveData()
+  const { pillars, projects, activity, ethPrice, state, lastUpdated, refreshing, refresh } =
+    useLiveData()
   const pillarProgress = aggregateProgress(pillars)
   const projectBreakdown = statusBreakdown(projects)
   const badge = STATE_BADGE[state]
