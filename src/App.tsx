@@ -1,4 +1,4 @@
-import { projects, contacts, milestones, jobs, trades } from './data/seed'
+import { contacts, milestones, jobs, projects, trades } from './data/seed'
 import { aggregateProgress, statusBreakdown } from './lib/util'
 import { useLiveData } from './hooks/useLiveData'
 import { Card, SectionTitle } from './components/Card'
@@ -6,6 +6,9 @@ import PillarGrid from './components/PillarGrid'
 import ProjectGrid from './components/ProjectGrid'
 import RelationshipMap from './components/RelationshipMap'
 import ProgressRing from './components/ProgressRing'
+import RadarChart from './components/RadarChart'
+import Timeline from './components/Timeline'
+import ContactPanel from './components/ContactPanel'
 import JobBoard from './components/JobBoard'
 import EthTracker from './components/EthTracker'
 import ActivityFeed from './components/ActivityFeed'
@@ -16,15 +19,21 @@ const STATE_BADGE: Record<string, { label: string; color: string }> = {
   fallback: { label: 'seed', color: '#8b949e' },
 }
 
+function formatUpdated(ts: number | null): string {
+  if (ts === null) return '—'
+  return new Date(ts).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })
+}
+
 export default function App() {
-  const { pillars, activity, ethPrice, state } = useLiveData()
+  const { pillars, activity, ethPrice, state, lastUpdated, refreshing, refresh } = useLiveData()
   const pillarProgress = aggregateProgress(pillars)
   const projectBreakdown = statusBreakdown(projects)
   const badge = STATE_BADGE[state]
+  const now = new Date().toISOString()
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6">
-      <header className="mb-6 flex items-center justify-between">
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-syrup-300">
             🍯 GoldenSyrup OS
@@ -37,7 +46,7 @@ export default function App() {
           </h1>
           <p className="text-sm text-gray-500">Personal command centre — Sriram only</p>
         </div>
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4 sm:gap-6">
           <div className="text-center">
             <ProgressRing value={pillarProgress} size={56} label="Revolution" />
             <p className="mt-1 text-[10px] uppercase tracking-wide text-gray-500">Revolution</p>
@@ -47,15 +56,31 @@ export default function App() {
             <div>🟡 {projectBreakdown.progress} in progress</div>
             <div>⚪ {projectBreakdown.idle} idle</div>
           </div>
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={refreshing}
+              className="rounded-lg border border-ink-600 bg-ink-800 px-3 py-1.5 text-xs text-syrup-300 transition-colors hover:border-syrup-700 disabled:opacity-50"
+            >
+              <span className={refreshing ? 'inline-block animate-spin' : ''}>↻</span> Refresh
+            </button>
+            <span className="text-[10px] text-gray-600">updated {formatUpdated(lastUpdated)}</span>
+          </div>
         </div>
       </header>
 
-      <section className="mb-8">
+      <section className="mb-8 animate-fade-in">
         <SectionTitle>8 Revolution Pillars</SectionTitle>
-        <PillarGrid pillars={pillars} />
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[320px_1fr]">
+          <Card className="flex items-center justify-center">
+            <RadarChart pillars={pillars} />
+          </Card>
+          <PillarGrid pillars={pillars} />
+        </div>
       </section>
 
-      <section className="mb-8">
+      <section className="mb-8 animate-fade-in">
         <SectionTitle>Project Dashboards</SectionTitle>
         <ProjectGrid projects={projects} />
       </section>
@@ -64,6 +89,9 @@ export default function App() {
         <section>
           <SectionTitle>Relationship Map</SectionTitle>
           <RelationshipMap contacts={contacts} projects={projects} />
+          <div className="mt-3">
+            <ContactPanel contacts={contacts} projects={projects} />
+          </div>
         </section>
 
         <section>
@@ -85,22 +113,9 @@ export default function App() {
 
         <section>
           <SectionTitle>Hackathons & Milestones</SectionTitle>
-          <div className="space-y-2">
-            {milestones.length === 0 && (
-              <Card>
-                <p className="text-xs text-gray-500">No upcoming milestones.</p>
-              </Card>
-            )}
-            {milestones.map((m) => (
-              <Card key={m.id}>
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-syrup-100">{m.title}</h3>
-                  <span className="text-xs text-gray-500">{m.date}</span>
-                </div>
-                {m.detail && <p className="mt-1 text-xs text-gray-400">{m.detail}</p>}
-              </Card>
-            ))}
-          </div>
+          <Card>
+            <Timeline milestones={milestones} now={now} />
+          </Card>
         </section>
       </div>
 

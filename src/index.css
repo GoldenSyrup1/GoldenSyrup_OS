@@ -10,8 +10,24 @@
 
 body {
   margin: 0;
-  background: theme('colors.ink.900');
+  min-height: 100vh;
   color: #e6edf3;
   font-family: theme('fontFamily.sans');
   -webkit-font-smoothing: antialiased;
+  background:
+    radial-gradient(1100px 540px at 15% -10%, rgba(224, 160, 32, 0.1), transparent 60%),
+    radial-gradient(900px 480px at 100% 0%, rgba(88, 166, 255, 0.06), transparent 55%),
+    theme('colors.ink.900');
+  background-attachment: fixed;
+}
+
+/* Respect reduced-motion: disable the decorative animations. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

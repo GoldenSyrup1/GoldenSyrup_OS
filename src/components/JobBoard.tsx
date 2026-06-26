@@ -13,9 +13,9 @@ export default function JobBoard({ jobs }: { jobs: JobApplication[] }) {
   const columns = groupByStage(jobs)
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1 lg:grid lg:grid-cols-5 lg:overflow-visible">
       {JOB_STAGES.map((stage) => (
-        <div key={stage} className="rounded-lg border border-ink-600 bg-ink-800 p-2">
+        <div key={stage} className="w-44 shrink-0 snap-start rounded-lg border border-ink-600 bg-ink-800 p-2 lg:w-auto">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: STAGE_ACCENT[stage] }}>
               {STAGE_LABEL[stage]}

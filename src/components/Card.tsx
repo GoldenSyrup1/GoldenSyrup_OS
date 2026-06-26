@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
     <div
-      className={`rounded-xl border border-ink-600 bg-ink-800 p-4 shadow-sm transition-colors hover:border-syrup-700 ${className}`}
+      className={`rounded-xl border border-ink-600 bg-ink-800/80 p-4 shadow-sm backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-syrup-700 hover:shadow-glow ${className}`}
     >
       {children}
     </div>
