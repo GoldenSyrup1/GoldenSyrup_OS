@@ -1,0 +1,23 @@
+# Netlify deploy config for GoldenSyrup OS (Vite + React SPA).
+# This repo is a static frontend: Vite compiles it into dist/, and that is what
+# Netlify must publish. Without these, Netlify serves the raw repo root (which
+# references /src/main.tsx — uncompiled TS/JSX the browser can't run).
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Single-page app: serve index.html for any path so client-side views resolve.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Security headers. CSP itself lives in the index.html meta tag (tightened per
+# deployed API origin); these are the complementary header-level protections.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
