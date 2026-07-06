@@ -12,6 +12,7 @@ import ContactPanel from './components/ContactPanel'
 import JobBoard from './components/JobBoard'
 import EthTracker from './components/EthTracker'
 import ActivityFeed from './components/ActivityFeed'
+import CommandConsole from './components/CommandConsole'
 
 const STATE_BADGE: Record<string, { label: string; color: string }> = {
   loading: { label: 'syncing…', color: '#d29922' },
@@ -70,6 +71,11 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      <section className="mb-8 animate-fade-in">
+        <SectionTitle>⌨️ Command Console</SectionTitle>
+        <CommandConsole projects={projects} />
+      </section>
 
       <section className="mb-8 animate-fade-in">
         <SectionTitle>8 Revolution Pillars</SectionTitle>

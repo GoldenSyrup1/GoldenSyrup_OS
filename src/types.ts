@@ -64,3 +64,41 @@ export interface EthTrade {
   pnlUsd?: number
   note?: string
 }
+
+// --- Command console (prompt → Claude Code) ---------------------------------
+
+/**
+ * A node in the command tree. A branch has `children`; a leaf (no children) is
+ * a promptable target you can dispatch work at.
+ */
+export interface CommandNode {
+  id: string
+  label: string
+  icon?: string
+  /** Sub-categories / targets. Absent or empty ⇒ a promptable leaf. */
+  children?: CommandNode[]
+  /** For leaves: absolute local repo path the orchestrator runs Claude Code in. */
+  path?: string
+  /** For leaves: linked Project id (surfaces its live status in the tree). */
+  projectId?: string
+  /** For leaves: one-line hint shown under the prompt box. */
+  hint?: string
+}
+
+export type RunStatus = 'queued' | 'running' | 'done' | 'failed'
+
+/** A single prompt dispatched at a target, plus its streamed lifecycle. */
+export interface Run {
+  id: string
+  targetId: string
+  targetLabel: string
+  prompt: string
+  status: RunStatus
+  createdAt: number
+  /** Streamed progress lines, oldest first. */
+  log: string[]
+  result?: string
+  error?: string
+  /** USD cost reported by the runner once complete (0 for the stub runner). */
+  costUsd?: number
+}

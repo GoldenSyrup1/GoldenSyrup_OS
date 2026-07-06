@@ -14,10 +14,13 @@ describe('<App />', () => {
   it('renders the command-centre shell and all core sections', () => {
     render(<App />)
     expect(screen.getByText(/GoldenSyrup OS/i)).toBeInTheDocument()
+    expect(screen.getByText(/Command Console/i)).toBeInTheDocument()
+    expect(screen.getByText(/Startups \/ Projects/i)).toBeInTheDocument()
     expect(screen.getByText(/8 Revolution Pillars/i)).toBeInTheDocument()
     expect(screen.getByText(/Project Dashboards/i)).toBeInTheDocument()
     expect(screen.getByText(/Relationship Map/i)).toBeInTheDocument()
-    expect(screen.getByText(/Job Search/i)).toBeInTheDocument()
+    // "Job Search" appears twice: the section title and the Command Console tree leaf.
+    expect(screen.getAllByText(/Job Search/i).length).toBeGreaterThan(0)
     expect(screen.getByText(/ETH Trades/i)).toBeInTheDocument()
   })
 

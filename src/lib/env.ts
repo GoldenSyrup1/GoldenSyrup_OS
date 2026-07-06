@@ -6,6 +6,8 @@ export const env = {
   stallInBase: (import.meta.env.VITE_STALLIN_API_BASE ?? '').replace(/\/$/, ''),
   connectorBase: (import.meta.env.VITE_CONNECTOR_API_BASE ?? '').replace(/\/$/, ''),
   connectorToken: import.meta.env.VITE_CONNECTOR_READ_TOKEN ?? '',
+  /** Local orchestrator that runs Claude Code on-demand; empty ⇒ stub runner. */
+  orchestratorBase: (import.meta.env.VITE_OS_ORCHESTRATOR_BASE ?? '').replace(/\/$/, ''),
 }
 
 /** Public ETH spot price (no key required). */
