@@ -85,6 +85,78 @@ export interface CommandNode {
   hint?: string
 }
 
+// --- Cowork bridge (Claude for Desktop → local state file) ------------------
+
+/**
+ * A task surfaced from Claude for Desktop's Cowork. Cowork is desktop-only and
+ * stores project data locally with no cloud API, so the bridge is a JSON file it
+ * writes into a connected folder; the OS reads it (see `data/cowork.ts`).
+ */
+export interface CoworkTask {
+  id: string
+  title: string
+  /** Cowork project / category this task belongs to. */
+  category: string
+  status: Status
+  /** 0..100 completion. */
+  progress: number
+  /** One-line current state — kept short so the board stays visual. */
+  detail?: string
+  /** ISO timestamp of the last update Cowork wrote. */
+  updated?: string
+}
+
+/** The whole Cowork snapshot the desktop app writes to the bridge file. */
+export interface CoworkState {
+  tasks: CoworkTask[]
+  /** ISO timestamp the snapshot was written. */
+  generatedAt?: string
+}
+
+/** A category rolled up from its tasks for the "pick a category on the side" rail. */
+export interface CoworkCategory {
+  name: string
+  taskCount: number
+  /** Weighted-average progress across the category's tasks, 0..100. */
+  progress: number
+  /** Worst-case status across the category (blocked > progress > idle > live). */
+  status: Status
+}
+
+// --- Architecture builder (flowchart / block canvas) ------------------------
+
+export type ArchBlockKind = 'service' | 'datastore' | 'external' | 'client' | 'queue' | 'note'
+
+/** A block on the architecture canvas (maps onto a React Flow node). */
+export interface ArchBlock {
+  id: string
+  kind: ArchBlockKind
+  label: string
+  x: number
+  y: number
+}
+
+/** A directed connection between two blocks (maps onto a React Flow edge). */
+export interface ArchLink {
+  id: string
+  source: string
+  target: string
+  label?: string
+}
+
+/** A named architecture flowchart, persisted to localStorage. */
+export interface Architecture {
+  id: string
+  name: string
+  blocks: ArchBlock[]
+  links: ArchLink[]
+  createdAt: number
+  updatedAt: number
+}
+
+/** The three top-level views selectable from the sidebar rail. */
+export type AppView = 'dashboard' | 'cowork' | 'architectures'
+
 export type RunStatus = 'queued' | 'running' | 'done' | 'failed'
 
 /** A single prompt dispatched at a target, plus its streamed lifecycle. */

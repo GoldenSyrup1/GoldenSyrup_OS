@@ -26,14 +26,35 @@ maps. No text walls. Eye-friendly dark theme.
   (GoldenSyrup_Intel pillar signal, WEPort status, claude_connector memory via MCP/HTTP).
   Base URLs come from `VITE_*` env vars (see `.env.example`).
 
+## App shell
+Sidebar rail (`components/Sidebar.tsx`) switches between three views in `src/views/`:
+- **Dashboard** — the original command centre (pillars, projects, relationship map, ETH, jobs…).
+- **Cowork** — visual board over Claude for Desktop's Cowork. Cowork is desktop-only with no
+  API, so the bridge is a JSON file it writes into a connected folder (`public/cowork-state.json`,
+  override via `VITE_COWORK_STATE_URL`). Pick a category on the left → see its tasks' progress.
+  Read-only + a clipboard "assign to Cowork" composer (browser can't write the local folder).
+- **Architectures** — flowchart/block builder on React Flow. `Create → New Architecture` opens an
+  editable canvas with a manual toolbar (add/connect/rename/delete blocks) **and** a prompt box
+  that generates blocks via the architect runner. Saved to localStorage.
+
+## Runner seam (prompt → work)
+`lib/runner.ts` (Command Console) and `lib/architect.ts` (Architectures) both split stub ⇄
+orchestrator: a stub works with no infra/cost; when `VITE_OS_ORCHESTRATOR_BASE` is set they POST
+to `/run` and `/architect` respectively. Keep new prompt surfaces on this pattern.
+
 ## Project structure
 ```
 src/
-  types.ts              shared domain types
+  types.ts              shared domain types (incl. Cowork + Architecture types)
   data/seed.ts          seeded state from memory
+  data/cowork.ts        Cowork bridge adapter (normalize + category rollup) — unit tested
   lib/util.ts           pure helpers (status color, progress aggregation) — unit tested
-  components/           ProgressRing, StatusDot, Card, PillarGrid, ProjectGrid, RelationshipMap
-  App.tsx               dashboard composition
+  lib/architecture.ts   architecture graph ops + React Flow projection — unit tested
+  lib/architect.ts      prompt → graph patch (stub ⇄ orchestrator) — unit tested
+  hooks/                useLiveData, useCommandConsole, useCowork, useArchitectures
+  components/           ProgressRing, StatusDot, Card, Sidebar, CoworkBoard, ArchitectureCanvas, …
+  views/                DashboardView, CoworkView, ArchitecturesView
+  App.tsx               shell: sidebar + view switch
   test/setup.ts         jest-dom matchers
 ```
 
@@ -58,5 +79,7 @@ src/
   Not auto-fixed because `audit fix --force` pulls vite@8 (breaking). Revisit on a Vite major bump.
 
 ## Status
-Scaffold complete: structure, seeded dashboards, tests passing, production build green.
-Next: wire live data adapters (Intel signal + connector memory) behind the seed layer.
+Sidebar shell shipped with three views: Dashboard, Cowork (bridge-file board), Architectures
+(React Flow builder with manual toolbar + prompt). Tests passing, production build green.
+Next: connect the desktop Cowork folder to keep `public/cowork-state.json` live, and wire the
+orchestrator `/architect` endpoint so architecture prompts generate real graphs (stub for now).

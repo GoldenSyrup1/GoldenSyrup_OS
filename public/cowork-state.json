@@ -1,0 +1,60 @@
+{
+  "generatedAt": "2026-07-09T09:00:00+10:00",
+  "_comment": "Cowork bridge sample. Claude for Desktop's Cowork is local-only with no API, so it writes this file into a connected folder and GoldenSyrup OS reads it. Replace with live task state; shape: { generatedAt, tasks: [{ id, title, category, status, progress, detail, updated }] }. status ∈ live|progress|blocked|idle.",
+  "tasks": [
+    {
+      "id": "cw-1",
+      "title": "Draft WEPort investor one-pager",
+      "category": "WEPort",
+      "status": "progress",
+      "progress": 65,
+      "detail": "Second pass on the traction section; waiting on latest freight metrics.",
+      "updated": "2026-07-09T08:40:00+10:00"
+    },
+    {
+      "id": "cw-2",
+      "title": "WEPort health-check CORS allow-list",
+      "category": "WEPort",
+      "status": "blocked",
+      "progress": 30,
+      "detail": "Needs the deployed dashboard origin added to the API allow-list.",
+      "updated": "2026-07-08T19:10:00+10:00"
+    },
+    {
+      "id": "cw-3",
+      "title": "Summarise this week's Intel signals",
+      "category": "GoldenSyrup_Intel",
+      "status": "live",
+      "progress": 100,
+      "detail": "8-pillar digest generated and filed to connector memory.",
+      "updated": "2026-07-09T07:05:00+10:00"
+    },
+    {
+      "id": "cw-4",
+      "title": "Cluster new signals by pillar",
+      "category": "GoldenSyrup_Intel",
+      "status": "progress",
+      "progress": 45,
+      "detail": "Government + Finance clusters done; Law pending.",
+      "updated": "2026-07-09T06:30:00+10:00"
+    },
+    {
+      "id": "cw-5",
+      "title": "UNSW capstone milestone plan",
+      "category": "UNSW",
+      "status": "progress",
+      "progress": 55,
+      "detail": "Draft timeline through Nov; needs supervisor sign-off.",
+      "updated": "2026-07-07T15:00:00+10:00"
+    },
+    {
+      "id": "cw-6",
+      "title": "Prep next hackathon pitch deck",
+      "category": "Hackathons",
+      "status": "idle",
+      "progress": 10,
+      "detail": "Outline only; not started in earnest.",
+      "updated": "2026-07-05T11:20:00+10:00"
+    }
+  ]
+}
