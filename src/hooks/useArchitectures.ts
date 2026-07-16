@@ -143,8 +143,15 @@ export function useArchitectures(): ArchitecturesApi {
           const baseX = nextColumnX(a)
           let next = a
           const newIds: string[] = []
-          patch.blocks.forEach((b, i) => {
-            next = addBlock(next, b.kind, b.label, { x: baseX, y: 40 + i * 110 }, Date.now())
+          // Lay blocks out by their column hint (entry points left, stores right),
+          // stacking each column independently so branches don't overlap.
+          const rowInCol: Record<number, number> = {}
+          patch.blocks.forEach((b) => {
+            const col = b.col ?? 0
+            const row = rowInCol[col] ?? 0
+            rowInCol[col] = row + 1
+            const pos = { x: baseX + col * 220, y: 40 + row * 120 }
+            next = addBlock(next, b.kind, b.label, pos, Date.now())
             newIds.push(next.blocks[next.blocks.length - 1].id)
           })
           patch.links.forEach((l) => {
