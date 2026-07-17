@@ -16,6 +16,12 @@ import cors from 'cors'
 import express from 'express'
 import { ARCHITECTURE_SCHEMA, MAX_BLOCKS, toPatch } from './lib/patch.js'
 
+// Sonnet 5 rather than Opus: drawing a handful of blocks from one sentence does
+// not need the top tier, and this is a prompt box that gets hammered while
+// iterating on a diagram. Override per-deployment without touching code.
+const ARCHITECT_MODEL = process.env.ARCHITECT_MODEL ?? 'claude-sonnet-5'
+const ARCHITECT_EFFORT = process.env.ARCHITECT_EFFORT ?? 'medium'
+
 const PORT = Number(process.env.ORCHESTRATOR_PORT) || 8787
 const HOST = '127.0.0.1'
 const ALLOWED_ORIGINS = (process.env.ORCHESTRATOR_ALLOWED_ORIGINS ?? 'http://localhost:5180,http://localhost:4173')
@@ -30,6 +36,11 @@ const ALLOWED_ORIGINS = (process.env.ORCHESTRATOR_ALLOWED_ORIGINS ?? 'http://loc
 if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
   console.warn('No ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN set — falling back to an `ant auth login` profile.')
   console.warn('If /architect returns 401, copy orchestrator/.env.example to orchestrator/.env and add a key.')
+} else if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.length < 40) {
+  // A left-over "sk-ant-..." placeholder authenticates as a 401 that reads like
+  // a bug in the endpoint. Say so at boot instead of at 3am.
+  console.warn('ANTHROPIC_API_KEY looks like a placeholder, not a real key — /architect will 401.')
+  console.warn('Paste the full key from https://console.anthropic.com/settings/keys into orchestrator/.env.')
 }
 
 const client = new Anthropic()
@@ -54,12 +65,12 @@ app.post('/architect', async (req, res) => {
   if (!prompt) return res.status(400).json({ error: 'prompt is required' })
 
   const message = await client.messages.create({
-    model: 'claude-opus-4-8',
+    model: ARCHITECT_MODEL,
     max_tokens: 16000,
     system: ARCHITECT_SYSTEM,
     thinking: { type: 'adaptive' },
     output_config: {
-      effort: 'medium',
+      effort: ARCHITECT_EFFORT,
       format: { type: 'json_schema', schema: ARCHITECTURE_SCHEMA },
     },
     messages: [{ role: 'user', content: prompt }],
@@ -91,7 +102,13 @@ app.post('/architect', async (req, res) => {
   if (patch.blocks.length === 0) {
     return res.status(502).json({ error: 'Claude returned no usable blocks.' })
   }
-  console.log(`/architect  ${patch.blocks.length} blocks, ${patch.links.length} links  "${prompt.slice(0, 60)}"`)
+  // Every prompt costs real money — log the tokens so the spend is visible here
+  // rather than only as a surprise on the Console's per-key cost column.
+  const { input_tokens: inTok = 0, output_tokens: outTok = 0 } = message.usage ?? {}
+  console.log(
+    `/architect  ${patch.blocks.length} blocks, ${patch.links.length} links  ` +
+      `[${ARCHITECT_MODEL} ${inTok}in/${outTok}out]  "${prompt.slice(0, 50)}"`,
+  )
   res.json(patch)
 })
 
@@ -186,4 +203,5 @@ app.use((err, _req, res, _next) => {
 
 app.listen(PORT, HOST, () => {
   console.log(`orchestrator on http://${HOST}:${PORT}  (origins: ${ALLOWED_ORIGINS.join(', ')})`)
+  console.log(`/architect model: ${ARCHITECT_MODEL} (effort ${ARCHITECT_EFFORT})`)
 })

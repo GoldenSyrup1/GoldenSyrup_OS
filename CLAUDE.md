@@ -45,9 +45,12 @@ to `/run` and `/architect` respectively. Keep new prompt surfaces on this patter
 **The orchestrator (`orchestrator/`) is the backend half.** A local-only Express server on
 :8787 serving both endpoints — one env var flips *both* surfaces off their stubs at once, so
 they ship together:
-- `POST /architect {prompt}` → `{blocks,links,note}`. Calls the Claude API (`claude-opus-4-8`)
-  with `output_config.format` + a JSON Schema, so the model is *constrained* to a valid graph
+- `POST /architect {prompt}` → `{blocks,links,note}`. Calls the Claude API with
+  `output_config.format` + a JSON Schema, so the model is *constrained* to a valid graph
   rather than asked politely for one. **Costs money per prompt** — the stub is free.
+  Model/effort are env knobs (`ARCHITECT_MODEL`, `ARCHITECT_EFFORT`), defaulting to
+  `claude-sonnet-5` at `medium`: a handful of blocks from one sentence does not need Opus,
+  and this is a box you hammer while iterating. Token counts are logged per call.
 - `POST /run {prompt,path}` → NDJSON `{log|status|result|error}`, spawning `claude -p` in `path`.
 
 Run it with `npm run orchestrator` (first time: `npm run orchestrator:install`). It holds
