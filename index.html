@@ -3,10 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Security: restrict resources to self; tighten connect-src per deployed API origins. -->
+    <!-- Security: restrict resources to self; tighten connect-src per deployed API origins.
+         http://localhost:8787 is the local orchestrator (see orchestrator/) — the one
+         plaintext exception, and it never resolves off this machine. Change it here too
+         if you move the orchestrator off its default port. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+      content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https: http://localhost:8787; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
     />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>GoldenSyrup OS</title>

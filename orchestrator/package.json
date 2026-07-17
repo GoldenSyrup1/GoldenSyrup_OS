@@ -1,0 +1,16 @@
+{
+  "name": "goldensyrup-os-orchestrator",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Local orchestrator for GoldenSyrup OS — POST /architect (prompt → architecture graph via the Claude API) and POST /run (prompt → claude -p).",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "dev": "node --env-file-if-exists=.env --watch server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.1",
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
+  }
+}

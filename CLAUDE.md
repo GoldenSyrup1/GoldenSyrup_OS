@@ -42,6 +42,27 @@ Sidebar rail (`components/Sidebar.tsx`) switches between three views in `src/vie
 orchestrator: a stub works with no infra/cost; when `VITE_OS_ORCHESTRATOR_BASE` is set they POST
 to `/run` and `/architect` respectively. Keep new prompt surfaces on this pattern.
 
+**The orchestrator (`orchestrator/`) is the backend half.** A local-only Express server on
+:8787 serving both endpoints — one env var flips *both* surfaces off their stubs at once, so
+they ship together:
+- `POST /architect {prompt}` → `{blocks,links,note}`. Calls the Claude API (`claude-opus-4-8`)
+  with `output_config.format` + a JSON Schema, so the model is *constrained* to a valid graph
+  rather than asked politely for one. **Costs money per prompt** — the stub is free.
+- `POST /run {prompt,path}` → NDJSON `{log|status|result|error}`, spawning `claude -p` in `path`.
+
+Run it with `npm run orchestrator` (first time: `npm run orchestrator:install`). It holds
+`ANTHROPIC_API_KEY`, so it binds loopback only and allowlists the dev/preview origins —
+**never expose it to a network, and never move that key to a `VITE_` var** (see the security
+rule below; that key is the whole reason this process exists). Schema + coercion live in
+`orchestrator/lib/patch.js`, kept SDK-free so the root Vitest suite can unit-test it; the
+browser still re-validates via `coercePatch`.
+
+Two traps worth knowing, both found by driving the endpoints rather than reading the code:
+- `express.json()` fully consumes the request body, after which **`req` fires `'close'`
+  immediately** — killing a child process on that signal shoots it milliseconds after spawn.
+  Watch `res`, not `req`.
+- `claude -p` blocks ~3s waiting for stdin unless you spawn it with `stdio: ['ignore', ...]`.
+
 ## Project structure
 ```
 src/
@@ -60,6 +81,7 @@ src/
 
 ## Commands
 - `npm run dev` — local dev server (port 5180).
+- `npm run orchestrator` — local orchestrator on :8787 (`orchestrator:install` first run).
 - `npm test` — run the Vitest suite (run mode).
 - `npm run build` — typecheck + production build.
 - `npm run lint` — typecheck only.
@@ -81,5 +103,13 @@ src/
 ## Status
 Sidebar shell shipped with three views: Dashboard, Cowork (bridge-file board), Architectures
 (React Flow builder with manual toolbar + prompt). Tests passing, production build green.
-Next: connect the desktop Cowork folder to keep `public/cowork-state.json` live, and wire the
-orchestrator `/architect` endpoint so architecture prompts generate real graphs (stub for now).
+
+The orchestrator now exists (`orchestrator/`), so `/architect` and `/run` are real rather than
+stubbed. `/run` is verified end-to-end against the `claude` CLI; **`/architect`'s Claude API call
+has not yet been run against live credentials** — it was built and reviewed against the current
+API reference, and its routing, validation, error handling, CORS, and schema/coercion are tested,
+but the first real prompt is unproven. Set `ANTHROPIC_API_KEY` in `orchestrator/.env` and send one
+before trusting it.
+
+Next: that first live `/architect` prompt; connect the desktop Cowork folder to keep
+`public/cowork-state.json` live; real job/trade data (seed has samples).
