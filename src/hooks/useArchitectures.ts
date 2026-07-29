@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Architecture, ArchBlockKind } from '../types'
+import type { Architecture, ArchKindDef, ArchLink } from '../types'
 import {
   addBlock,
+  addKind,
   connectBlocks,
   createArchitecture,
   loadArchitectures,
   moveBlock,
   removeBlock,
+  removeKind,
   removeLink,
   renameBlock,
+  resizeBlock,
+  setBlockColor,
+  setBlockImage,
+  setBlockParent,
+  setBlockText,
+  updateKind,
+  updateLink,
 } from '../lib/architecture'
 import { pickArchStore } from '../lib/archStore'
 import { pickArchitect } from '../lib/architect'
@@ -30,12 +39,22 @@ export interface ArchitecturesApi {
   select: (id: string) => void
   remove: (id: string) => void
   rename: (name: string) => void
-  addManualBlock: (kind: ArchBlockKind) => void
+  addManualBlock: (kind: string) => void
   renameCurrentBlock: (blockId: string, label: string) => void
   deleteBlock: (blockId: string) => void
   deleteLink: (linkId: string) => void
   connect: (source: string, target: string) => void
   reposition: (blockId: string, pos: { x: number; y: number }) => void
+  // --- full canvas ---
+  recolorBlock: (blockId: string, color: string | undefined) => void
+  resize: (blockId: string, size: { width: number; height: number }) => void
+  setText: (blockId: string, text: string) => void
+  setImage: (blockId: string, src: string) => void
+  setParent: (blockId: string, parentId: string | undefined) => void
+  styleLink: (linkId: string, patch: Partial<Omit<ArchLink, 'id' | 'source' | 'target'>>) => void
+  defineKind: (def: { label: string; color: string; icon: string }) => void
+  editKind: (kindId: string, patch: Partial<Omit<ArchKindDef, 'id'>>) => void
+  deleteKind: (kindId: string) => void
   buildFromPrompt: (prompt: string) => Promise<void>
   /** 'orchestrator' when diagrams persist to disk; 'local' when browser-only. */
   storeKind: string
@@ -100,10 +119,14 @@ export function useArchitectures(): ArchitecturesApi {
     [currentId],
   )
 
+  // Carry the most recent diagram's custom kinds onto a new one, so a block
+  // type defined once is reusable instead of redrawn per diagram.
   const create = useCallback((name: string) => {
-    const arch = createArchitecture(name, Date.now())
-    setList((prev) => [arch, ...prev])
-    setCurrentId(arch.id)
+    setList((prev) => {
+      const arch = createArchitecture(name, Date.now(), prev.find((a) => a.kinds?.length)?.kinds ?? [])
+      setCurrentId(arch.id)
+      return [arch, ...prev]
+    })
     setBuildNote(null)
   }, [])
 
@@ -133,7 +156,7 @@ export function useArchitectures(): ArchitecturesApi {
   )
 
   const addManualBlock = useCallback(
-    (kind: ArchBlockKind) => {
+    (kind: string) => {
       mutate((a) => {
         // Stagger placement so successive adds don't stack exactly.
         const x = 60 + (a.blocks.length % 4) * 40
@@ -162,6 +185,46 @@ export function useArchitectures(): ArchitecturesApi {
   )
   const reposition = useCallback(
     (blockId: string, pos: { x: number; y: number }) => mutate((a) => moveBlock(a, blockId, pos, Date.now())),
+    [mutate],
+  )
+  const recolorBlock = useCallback(
+    (blockId: string, color: string | undefined) => mutate((a) => setBlockColor(a, blockId, color, Date.now())),
+    [mutate],
+  )
+  const resize = useCallback(
+    (blockId: string, size: { width: number; height: number }) =>
+      mutate((a) => resizeBlock(a, blockId, size, Date.now())),
+    [mutate],
+  )
+  const setText = useCallback(
+    (blockId: string, text: string) => mutate((a) => setBlockText(a, blockId, text, Date.now())),
+    [mutate],
+  )
+  const setImage = useCallback(
+    (blockId: string, src: string) => mutate((a) => setBlockImage(a, blockId, src, Date.now())),
+    [mutate],
+  )
+  const setParent = useCallback(
+    (blockId: string, parentId: string | undefined) =>
+      mutate((a) => setBlockParent(a, blockId, parentId, Date.now())),
+    [mutate],
+  )
+  const styleLink = useCallback(
+    (linkId: string, patch: Partial<Omit<ArchLink, 'id' | 'source' | 'target'>>) =>
+      mutate((a) => updateLink(a, linkId, patch, Date.now())),
+    [mutate],
+  )
+  const defineKind = useCallback(
+    (def: { label: string; color: string; icon: string }) => mutate((a) => addKind(a, def, Date.now())),
+    [mutate],
+  )
+  const editKind = useCallback(
+    (kindId: string, patch: Partial<Omit<ArchKindDef, 'id'>>) =>
+      mutate((a) => updateKind(a, kindId, patch, Date.now())),
+    [mutate],
+  )
+  const deleteKind = useCallback(
+    (kindId: string) => mutate((a) => removeKind(a, kindId, Date.now())),
     [mutate],
   )
 
@@ -223,6 +286,15 @@ export function useArchitectures(): ArchitecturesApi {
     connect,
     reposition,
     buildFromPrompt,
+    recolorBlock,
+    resize,
+    setText,
+    setImage,
+    setParent,
+    styleLink,
+    defineKind,
+    editKind,
+    deleteKind,
     storeKind: store.current.kind,
     storeError,
   }

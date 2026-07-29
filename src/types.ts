@@ -125,15 +125,55 @@ export interface CoworkCategory {
 
 // --- Architecture builder (flowchart / block canvas) ------------------------
 
-export type ArchBlockKind = 'service' | 'datastore' | 'external' | 'client' | 'queue' | 'note'
+/**
+ * The built-in block kinds. A block's `kind` may also be the id of a custom
+ * kind defined on the architecture — see `ArchKindDef` — so treat this as the
+ * set of presets, not a closed universe.
+ */
+export type ArchBlockKind =
+  | 'service'
+  | 'datastore'
+  | 'external'
+  | 'client'
+  | 'queue'
+  | 'note'
+  | 'group'
+  | 'image'
+
+/**
+ * A block type Sriram defined himself: his own vocabulary, not ours. Stored on
+ * the architecture that uses it, and copied onto new architectures so a kind
+ * built once is reusable rather than redrawn.
+ */
+export interface ArchKindDef {
+  id: string
+  label: string
+  color: string
+  icon: string
+}
+
+/** How an edge is drawn. */
+export type ArchEdgeCurve = 'bezier' | 'straight' | 'step'
 
 /** A block on the architecture canvas (maps onto a React Flow node). */
 export interface ArchBlock {
   id: string
-  kind: ArchBlockKind
+  /** A built-in `ArchBlockKind`, or the id of an `ArchKindDef` on this architecture. */
+  kind: string
   label: string
   x: number
   y: number
+  /** Set once a block has been resized; absent means "size to content". */
+  width?: number
+  height?: number
+  /** Per-block colour override, winning over whatever the kind supplies. */
+  color?: string
+  /** Containing group block, if any. Positions of children are relative to it. */
+  parentId?: string
+  /** Free-form body text — the point of a sticky note. */
+  text?: string
+  /** Image source for `image` blocks. A data URL, so it survives in the JSON. */
+  src?: string
 }
 
 /** A directed connection between two blocks (maps onto a React Flow edge). */
@@ -142,9 +182,14 @@ export interface ArchLink {
   source: string
   target: string
   label?: string
+  dashed?: boolean
+  curve?: ArchEdgeCurve
+  /** Whether to draw the arrow head. Default (absent) is an arrow. */
+  noArrow?: boolean
+  color?: string
 }
 
-/** A named architecture flowchart, persisted to localStorage. */
+/** A named architecture flowchart. Persisted to localStorage and to the server. */
 export interface Architecture {
   id: string
   name: string
@@ -152,6 +197,8 @@ export interface Architecture {
   links: ArchLink[]
   createdAt: number
   updatedAt: number
+  /** Custom block kinds available on this diagram. */
+  kinds?: ArchKindDef[]
 }
 
 // --- Fitness (ability-first tracking) ---------------------------------------
