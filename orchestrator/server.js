@@ -4,6 +4,12 @@
 // BOTH prompt surfaces off their stubs at once, so this serves both endpoints:
 //   POST /architect  {prompt}            -> {blocks, links, note}   (Architectures)
 //   POST /run        {prompt, path}      -> NDJSON progress stream  (Command Console)
+//   GET  /architectures                  -> {architectures: [...]}  (durable canvas)
+//   PUT  /architectures {architectures}  -> {architectures: [...]}
+//
+// The architectures endpoints exist because the canvas used to live only in
+// browser localStorage, where the diagrams were invisible to every agent and
+// died with the cache. This process has a filesystem; it keeps the durable copy.
 //
 // Local-only and single-user by design: it holds ANTHROPIC_API_KEY and can spawn
 // Claude Code in a working directory, so it must never be exposed to a network.
@@ -11,16 +17,29 @@
 
 import { spawn } from 'node:child_process'
 import { statSync } from 'node:fs'
+import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import Anthropic from '@anthropic-ai/sdk'
 import cors from 'cors'
 import express from 'express'
 import { ARCHITECTURE_SCHEMA, MAX_BLOCKS, toPatch } from './lib/patch.js'
+import { archFileName, architectureContext, sanitizeArchitecture, sanitizeArchitectures } from './lib/store.js'
 
 // Sonnet 5 rather than Opus: drawing a handful of blocks from one sentence does
 // not need the top tier, and this is a prompt box that gets hammered while
 // iterating on a diagram. Override per-deployment without touching code.
 const ARCHITECT_MODEL = process.env.ARCHITECT_MODEL ?? 'claude-sonnet-5'
 const ARCHITECT_EFFORT = process.env.ARCHITECT_EFFORT ?? 'medium'
+
+// Architectures live in the repo, committed and versioned, rather than in a
+// gitignored data dir: the whole point is that an agent working in this
+// checkout can read the diagrams, and `git diff` on a drawing you changed is
+// worth having. Resolved from this file, not cwd, so it lands in the same place
+// however the server was launched.
+const ARCHITECTURES_DIR = process.env.ARCHITECTURES_DIR
+  ? path.resolve(process.env.ARCHITECTURES_DIR)
+  : fileURLToPath(new URL('../architectures/', import.meta.url))
 
 const PORT = Number(process.env.ORCHESTRATOR_PORT) || 8787
 const HOST = '127.0.0.1'
@@ -46,7 +65,9 @@ if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
 const client = new Anthropic()
 const app = express()
 app.use(cors({ origin: ALLOWED_ORIGINS }))
-app.use(express.json({ limit: '64kb' }))
+// 64kb was plenty for a prompt, but a PUT /architectures carries every diagram
+// at once and a canvas of a few hundred blocks clears it easily.
+app.use(express.json({ limit: '2mb' }))
 
 const ARCHITECT_SYSTEM = `You turn a short description of a software system into a small architecture diagram.
 
@@ -112,13 +133,80 @@ app.post('/architect', async (req, res) => {
   res.json(patch)
 })
 
+// ---- durable architectures -------------------------------------------------
+
+/** Read every architecture on disk, newest first. Missing dir ⇒ empty list. */
+async function readArchitectures() {
+  let names
+  try {
+    names = await readdir(ARCHITECTURES_DIR)
+  } catch (err) {
+    if (err.code === 'ENOENT') return []
+    throw err
+  }
+  const files = names.filter((n) => n.endsWith('.json'))
+  const parsed = await Promise.all(
+    files.map(async (name) => {
+      try {
+        return sanitizeArchitecture(JSON.parse(await readFile(path.join(ARCHITECTURES_DIR, name), 'utf8')))
+      } catch {
+        // A hand-edited or half-written file shouldn't take the whole list down.
+        console.warn(`architectures: skipping unreadable ${name}`)
+        return null
+      }
+    }),
+  )
+  return parsed.filter(Boolean).sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+app.get('/architectures', async (_req, res) => {
+  res.json({ architectures: await readArchitectures() })
+})
+
+/**
+ * Replace the stored set with the client's. The browser owns the canvas state,
+ * so this is a whole-list PUT rather than per-architecture writes — which means
+ * deletes have to be honoured by pruning files no longer in the payload.
+ */
+app.put('/architectures', async (req, res) => {
+  if (!Array.isArray(req.body?.architectures)) {
+    return res.status(400).json({ error: 'architectures must be an array' })
+  }
+  const list = sanitizeArchitectures(req.body.architectures)
+
+  await mkdir(ARCHITECTURES_DIR, { recursive: true })
+  const keep = new Set()
+  for (const arch of list) {
+    const file = archFileName(arch)
+    keep.add(file)
+    await writeFile(path.join(ARCHITECTURES_DIR, file), `${JSON.stringify(arch, null, 2)}\n`, 'utf8')
+  }
+
+  // Prune both deleted architectures and the stale file left behind by a rename
+  // (the slug changes, so the same id would otherwise sit under two names).
+  const existing = await readdir(ARCHITECTURES_DIR)
+  for (const name of existing) {
+    if (name.endsWith('.json') && !keep.has(name)) await unlink(path.join(ARCHITECTURES_DIR, name))
+  }
+
+  console.log(`/architectures  saved ${list.length} to ${ARCHITECTURES_DIR}`)
+  res.json({ architectures: list })
+})
+
 /**
  * Prompt -> `claude -p` in the target directory, streamed back as the
  * newline-delimited {log|status|result|error} objects orchestratorRunner reads.
+ *
+ * An optional `architecture` is rendered to text and prepended to the prompt,
+ * so a diagram Sriram drew ships as context with the request instead of being
+ * something only he can see.
  */
 app.post('/run', (req, res) => {
   const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : ''
   if (!prompt) return res.status(400).json({ error: 'prompt is required' })
+
+  const arch = req.body?.architecture ? sanitizeArchitecture(req.body.architecture) : null
+  const fullPrompt = arch ? `${architectureContext(arch)}\n${prompt}` : prompt
 
   const requested = typeof req.body?.path === 'string' ? req.body.path : ''
   let cwd = process.cwd()
@@ -134,11 +222,12 @@ app.post('/run', (req, res) => {
   res.setHeader('Content-Type', 'application/x-ndjson')
   const send = (obj) => res.write(`${JSON.stringify(obj)}\n`)
   send({ log: `▸ claude -p in ${cwd}` })
+  if (arch) send({ log: `▸ context: architecture "${arch.name}" (${arch.blocks.length} blocks)` })
 
   // No shell: prompt and path are passed as argv entries, so neither can inject
   // a second command however they are quoted. stdin is closed because `claude -p`
   // otherwise waits 3s for piped input that is never coming and warns about it.
-  const child = spawn('claude', ['-p', prompt], { cwd, shell: false, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn('claude', ['-p', fullPrompt], { cwd, shell: false, stdio: ['ignore', 'pipe', 'pipe'] })
   let stdout = ''
   let stderrTail = ''
 
@@ -204,4 +293,5 @@ app.use((err, _req, res, _next) => {
 app.listen(PORT, HOST, () => {
   console.log(`orchestrator on http://${HOST}:${PORT}  (origins: ${ALLOWED_ORIGINS.join(', ')})`)
   console.log(`/architect model: ${ARCHITECT_MODEL} (effort ${ARCHITECT_EFFORT})`)
+  console.log(`architectures:   ${ARCHITECTURES_DIR}`)
 })

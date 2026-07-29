@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CommandNode, Run } from '../types'
+import type { Architecture, CommandNode, Run } from '../types'
 import { pickRunner } from '../lib/runner'
 import { budgetState, totalSpend, type BudgetState } from '../lib/runs'
 
@@ -39,7 +39,8 @@ function notify(title: string, body: string): void {
 
 export interface CommandConsole {
   runs: Run[]
-  submit: (target: CommandNode, prompt: string) => void
+  /** `architecture` ships the drawn diagram along as context for the prompt. */
+  submit: (target: CommandNode, prompt: string, architecture?: Architecture) => void
   clearRun: (id: string) => void
   cap: number
   setCap: (usd: number) => void
@@ -91,7 +92,7 @@ export function useCommandConsole(): CommandConsole {
   }, [])
 
   const submit = useCallback(
-    (target: CommandNode, prompt: string) => {
+    (target: CommandNode, prompt: string, architecture?: Architecture) => {
       const text = prompt.trim()
       if (!text) return
       const id = `run-${Date.now()}-${seq.current++}`
@@ -111,16 +112,21 @@ export function useCommandConsole(): CommandConsole {
       }
 
       runner.current
-        .submit(target, text, (u) => {
-          patch(id, (r) => ({
-            ...r,
-            status: u.status ?? r.status,
-            log: u.log ? [...r.log, u.log] : r.log,
-            result: u.result ?? r.result,
-            error: u.error ?? r.error,
-            costUsd: u.costUsd ?? r.costUsd,
-          }))
-        })
+        .submit(
+          target,
+          text,
+          (u) => {
+            patch(id, (r) => ({
+              ...r,
+              status: u.status ?? r.status,
+              log: u.log ? [...r.log, u.log] : r.log,
+              result: u.result ?? r.result,
+              error: u.error ?? r.error,
+              costUsd: u.costUsd ?? r.costUsd,
+            }))
+          },
+          architecture,
+        )
         .then(() => {
           patch(id, (r) => (r.status === 'queued' || r.status === 'running' ? { ...r, status: 'done' } : r))
           notify(`✅ ${target.label} — done`, text.slice(0, 80))

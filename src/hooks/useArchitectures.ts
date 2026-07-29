@@ -9,8 +9,8 @@ import {
   removeBlock,
   removeLink,
   renameBlock,
-  saveArchitectures,
 } from '../lib/architecture'
+import { pickArchStore } from '../lib/archStore'
 import { pickArchitect } from '../lib/architect'
 
 /** Where a prompt's fresh blocks land: a new column to the right of existing content. */
@@ -37,23 +37,57 @@ export interface ArchitecturesApi {
   connect: (source: string, target: string) => void
   reposition: (blockId: string, pos: { x: number; y: number }) => void
   buildFromPrompt: (prompt: string) => Promise<void>
+  /** 'orchestrator' when diagrams persist to disk; 'local' when browser-only. */
+  storeKind: string
+  /** Set when a save to disk failed — the canvas is then localStorage-only. */
+  storeError: string | null
 }
 
 /**
- * Owns the saved architectures: CRUD, localStorage persistence, and dispatching a
- * prompt through the architect runner then laying its blocks out and merging them
- * onto the current canvas. All graph edits go through the pure helpers in
+ * Owns the saved architectures: CRUD, persistence, and dispatching a prompt
+ * through the architect runner then laying its blocks out and merging them onto
+ * the current canvas. All graph edits go through the pure helpers in
  * `lib/architecture.ts` so state stays serialisable.
+ *
+ * Persistence goes through `archStore`, which is disk-backed when the
+ * orchestrator is configured. State still initialises from localStorage so the
+ * canvas renders immediately, then reconciles with whatever is on disk.
  */
 export function useArchitectures(): ArchitecturesApi {
   const [list, setList] = useState<Architecture[]>(loadArchitectures)
   const [currentId, setCurrentId] = useState<string | null>(() => loadArchitectures()[0]?.id ?? null)
   const [building, setBuilding] = useState(false)
   const [buildNote, setBuildNote] = useState<string | null>(null)
+  const [storeError, setStoreError] = useState<string | null>(null)
   const architect = useRef(pickArchitect())
+  const store = useRef(pickArchStore())
+  // Nothing may be written back until the initial load has resolved: saving the
+  // (possibly empty) localStorage list first would wipe the copy on disk.
+  const hydrated = useRef(false)
 
   useEffect(() => {
-    saveArchitectures(list)
+    let cancelled = false
+    store.current
+      .load()
+      .then((loaded) => {
+        if (cancelled) return
+        setList(loaded)
+        setCurrentId((cur) => (cur && loaded.some((a) => a.id === cur) ? cur : loaded[0]?.id ?? null))
+      })
+      .finally(() => {
+        if (!cancelled) hydrated.current = true
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!hydrated.current) return
+    store.current.save(list).then(
+      () => setStoreError(null),
+      (err: unknown) => setStoreError(err instanceof Error ? err.message : String(err)),
+    )
   }, [list])
 
   const current = useMemo(() => list.find((a) => a.id === currentId) ?? null, [list, currentId])
@@ -189,5 +223,7 @@ export function useArchitectures(): ArchitecturesApi {
     connect,
     reposition,
     buildFromPrompt,
+    storeKind: store.current.kind,
+    storeError,
   }
 }

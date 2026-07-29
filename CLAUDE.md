@@ -60,7 +60,18 @@ they ship together:
   Model/effort are env knobs (`ARCHITECT_MODEL`, `ARCHITECT_EFFORT`), defaulting to
   `claude-sonnet-5` at `medium`: a handful of blocks from one sentence does not need Opus,
   and this is a box you hammer while iterating. Token counts are logged per call.
-- `POST /run {prompt,path}` → NDJSON `{log|status|result|error}`, spawning `claude -p` in `path`.
+- `POST /run {prompt,path,architecture?}` → NDJSON `{log|status|result|error}`, spawning
+  `claude -p` in `path`. An attached `architecture` is rendered to text and prepended to the
+  prompt inside `<architecture>` tags, so a diagram ships as context with the request.
+- `GET|PUT /architectures` → the durable canvas. **Diagrams used to live only in browser
+  localStorage, which made them invisible to Claude Code, Cowork and Claude, and killed them
+  with the browser cache.** They now persist as one JSON file per architecture under
+  `architectures/` (committed + versioned on purpose — an agent in this checkout can read
+  them; `ARCHITECTURES_DIR` overrides). PUT replaces the whole set, so it prunes files for
+  deleted architectures *and* the stale slug left by a rename. Browser side is the same
+  stub ⇄ orchestrator seam (`src/lib/archStore.ts`): localStorage-only by default,
+  disk-backed when the orchestrator is set, and it write-through caches to localStorage so
+  an orchestrator that is down degrades to the old behaviour instead of a blank canvas.
 
 Run it with `npm run orchestrator` (first time: `npm run orchestrator:install`). It holds
 `ANTHROPIC_API_KEY`, so it binds loopback only and allowlists the dev/preview origins —
@@ -84,6 +95,7 @@ src/
   lib/util.ts           pure helpers (status color, progress aggregation) — unit tested
   lib/architecture.ts   architecture graph ops + React Flow projection — unit tested
   lib/architect.ts      prompt → graph patch (stub ⇄ orchestrator) — unit tested
+  lib/archStore.ts      architecture persistence (localStorage ⇄ disk) — unit tested
   lib/fitness.ts        ability/ladder ops + progress maths + persistence — unit tested
   hooks/                useLiveData, useCommandConsole, useCowork, useArchitectures, useFitness
   components/           ProgressRing, StatusDot, Card, Sidebar, CoworkBoard, ArchitectureCanvas,
@@ -118,18 +130,24 @@ src/
 Sidebar shell shipped with four views: Dashboard, Cowork (bridge-file board), Architectures
 (React Flow builder with manual toolbar + prompt), Fitness (ability ladders).
 
-⚠️ **Fitness is written but its test run has not been observed** — `src/lib/fitness.test.ts`
-(progress maths, ladder edits, rollups, persistence round-trip) and `src/views/FitnessView.test.tsx`
-(create → add steps → log → owned, discipline rail, persistence, pause/delete) exist but
-`npm test` was interrupted before a result was seen. Run `npm test` and `npm run build` before
-trusting them. Everything prior to Fitness was passing.
+**Fitness is verified** — the previously-unobserved suite was run: `npm test` = 20 files /
+158 tests pass, `npm run build` green. The ⚠️ on it is cleared.
 
 The orchestrator now exists (`orchestrator/`), so `/architect` and `/run` are real rather than
-stubbed. `/run` is verified end-to-end against the `claude` CLI; **`/architect`'s Claude API call
-has not yet been run against live credentials** — it was built and reviewed against the current
-API reference, and its routing, validation, error handling, CORS, and schema/coercion are tested,
-but the first real prompt is unproven. Set `ANTHROPIC_API_KEY` in `orchestrator/.env` and send one
-before trusting it.
+stubbed. `/run` is verified end-to-end against the `claude` CLI, including with an architecture
+attached as context; `GET|PUT /architectures` is verified by driving it (write, read back,
+rename-prune, delete-prune, 400 on a bad body). **`/architect`'s Claude API call has still not
+been run against live credentials** — it was built and reviewed against the current API
+reference, and its routing, validation, error handling, CORS, and schema/coercion are tested,
+but the first real prompt is unproven. Set `ANTHROPIC_API_KEY` in `orchestrator/.env` and send
+one before trusting it.
 
-Next: verify the Fitness suite; that first live `/architect` prompt; connect the desktop Cowork
-folder to keep `public/cowork-state.json` live; real job/trade data (seed has samples).
+Architectures now persist to disk (see the runner seam above), which closes the "diagrams are
+invisible to agents" blocker. Note the browser only writes there while the orchestrator is
+running — the canvas badge reads **browser only** otherwise.
+
+Next: that first live `/architect` prompt; connect the desktop Cowork folder to keep
+`public/cowork-state.json` live; real job/trade data (seed has samples). The bigger open
+direction: one prompt box that routes to Cowork / Claude Code / Claude chat — Code round-trips
+today, an API-backed `/chat` is buildable but is not Sriram's claude.ai history, and Cowork
+stays half-loop (the orchestrator can drop a task file in, but a human must open Cowork to act).

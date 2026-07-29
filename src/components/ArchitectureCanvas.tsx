@@ -158,8 +158,23 @@ function ArchitectPrompt({ api }: { api: ArchitecturesApi }) {
     <div className="rounded-xl border border-ink-600 bg-ink-800/80 p-3">
       <div className="mb-2 flex items-center gap-2">
         <span className="text-sm font-semibold text-syrup-100">🪄 Build from a prompt</span>
+        {/* Where this diagram lives decides whether any agent can ever see it. */}
         <span
           className="ml-auto rounded-full px-2 py-0.5 text-[9px] uppercase tracking-wide"
+          style={{
+            backgroundColor: api.storeKind === 'orchestrator' ? '#3fb95022' : '#8b949e22',
+            color: api.storeKind === 'orchestrator' ? '#3fb950' : '#8b949e',
+          }}
+          title={
+            api.storeKind === 'orchestrator'
+              ? 'Saved to architectures/ on disk — agents working in this repo can read it'
+              : 'Browser localStorage only — invisible to agents, and lost with the browser cache'
+          }
+        >
+          {api.storeKind === 'orchestrator' ? 'on disk' : 'browser only'}
+        </span>
+        <span
+          className="rounded-full px-2 py-0.5 text-[9px] uppercase tracking-wide"
           style={{
             backgroundColor: api.architectKind === 'orchestrator' ? '#3fb95022' : '#8b949e22',
             color: api.architectKind === 'orchestrator' ? '#3fb950' : '#8b949e',
@@ -186,6 +201,11 @@ function ArchitectPrompt({ api }: { api: ArchitecturesApi }) {
       <div className="mt-2 flex items-center gap-3">
         <span className="text-[10px] text-gray-600">⌘/Ctrl + Enter · blocks append to the canvas</span>
         {api.buildNote && <span className="truncate text-[11px] text-gray-400">{api.buildNote}</span>}
+        {api.storeError && (
+          <span className="truncate text-[11px] text-red-400" title={api.storeError}>
+            ⚠ not saved to disk: {api.storeError}
+          </span>
+        )}
         <button
           type="button"
           onClick={send}

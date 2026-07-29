@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import type { CommandNode, Project } from '../types'
+import { useEffect, useState } from 'react'
+import type { Architecture, CommandNode, Project } from '../types'
 import { commandTree } from '../data/commandTree'
 import { useCommandConsole } from '../hooks/useCommandConsole'
+import { pickArchStore } from '../lib/archStore'
 import CommandTree from './CommandTree'
 import RunQueue from './RunQueue'
 import BudgetMeter from './BudgetMeter'
@@ -10,10 +11,29 @@ export default function CommandConsole({ projects }: { projects: Project[] }) {
   const { runs, submit, clearRun, cap, setCap, budget, runnerKind } = useCommandConsole()
   const [target, setTarget] = useState<CommandNode | null>(null)
   const [prompt, setPrompt] = useState('')
+  // Read-only view of the saved diagrams — the Architectures view owns editing
+  // them, this only needs the list to attach one as context.
+  const [architectures, setArchitectures] = useState<Architecture[]>([])
+  const [archId, setArchId] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    pickArchStore()
+      .load()
+      .then((list) => {
+        if (!cancelled) setArchitectures(list)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const attached = architectures.find((a) => a.id === archId)
 
   const send = () => {
     if (!target || !prompt.trim()) return
-    submit(target, prompt)
+    submit(target, prompt, attached)
     setPrompt('')
   }
 
@@ -57,8 +77,28 @@ export default function CommandConsole({ projects }: { projects: Project[] }) {
             rows={3}
             className="w-full resize-y rounded-lg border border-ink-600 bg-ink-900 p-2 text-sm text-gray-200 placeholder:text-gray-600 focus:border-syrup-700 focus:outline-none disabled:opacity-50"
           />
-          <div className="mt-2 flex items-center justify-between">
-            <span className="text-[10px] text-gray-600">⌘/Ctrl + Enter to send</span>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="shrink-0 text-[10px] text-gray-600">⌘/Ctrl + Enter to send</span>
+              {architectures.length > 0 && (
+                <label className="flex min-w-0 items-center gap-1 text-[10px] text-gray-600">
+                  <span className="shrink-0">· context:</span>
+                  <select
+                    aria-label="Attach architecture as context"
+                    value={archId}
+                    onChange={(e) => setArchId(e.target.value)}
+                    className="min-w-0 truncate rounded border border-ink-600 bg-ink-900 px-1 py-0.5 text-[10px] text-gray-300 focus:border-syrup-700 focus:outline-none"
+                  >
+                    <option value="">no architecture</option>
+                    {architectures.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name} ({a.blocks.length})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
             <button
               type="button"
               onClick={send}

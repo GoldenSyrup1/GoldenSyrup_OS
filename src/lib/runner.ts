@@ -4,7 +4,7 @@
 //   • orchestratorRunner— POSTs to a local process that runs `claude -p` per prompt
 // pickRunner() chooses the real one when VITE_OS_ORCHESTRATOR_BASE is set.
 
-import type { CommandNode, RunStatus } from '../types'
+import type { Architecture, CommandNode, RunStatus } from '../types'
 import { env } from './env'
 
 /** An incremental update streamed while a run is in flight. */
@@ -18,8 +18,17 @@ export interface RunUpdate {
 
 export interface Runner {
   readonly kind: 'stub' | 'orchestrator'
-  /** Dispatch a prompt; call onUpdate as progress streams; resolve when terminal. */
-  submit(target: CommandNode, prompt: string, onUpdate: (u: RunUpdate) => void): Promise<void>
+  /**
+   * Dispatch a prompt; call onUpdate as progress streams; resolve when terminal.
+   * An `architecture` rides along as context so a diagram Sriram drew is
+   * something the agent can see, not just something he can.
+   */
+  submit(
+    target: CommandNode,
+    prompt: string,
+    onUpdate: (u: RunUpdate) => void,
+    architecture?: Architecture,
+  ): Promise<void>
 }
 
 const delay = (ms: number) => new Promise<void>((res) => setTimeout(res, ms))
@@ -37,8 +46,11 @@ const STUB_STEPS = [
  */
 export const stubRunner: Runner = {
   kind: 'stub',
-  async submit(target, prompt, onUpdate) {
+  async submit(target, prompt, onUpdate, architecture) {
     onUpdate({ status: 'running', log: `▸ dispatched to ${target.label}` })
+    if (architecture) {
+      onUpdate({ log: `▸ context: architecture "${architecture.name}" (${architecture.blocks.length} blocks)` })
+    }
     for (const step of STUB_STEPS) {
       await delay(550)
       onUpdate({ log: step })
@@ -62,12 +74,12 @@ export const stubRunner: Runner = {
 export function orchestratorRunner(base: string): Runner {
   return {
     kind: 'orchestrator',
-    async submit(target, prompt, onUpdate) {
+    async submit(target, prompt, onUpdate, architecture) {
       onUpdate({ status: 'running', log: `▸ dispatched to ${target.label}` })
       const res = await fetch(`${base}/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetId: target.id, path: target.path, prompt }),
+        body: JSON.stringify({ targetId: target.id, path: target.path, prompt, architecture }),
       })
       if (!res.ok || !res.body) throw new Error(`orchestrator responded ${res.status}`)
       const reader = res.body.getReader()
