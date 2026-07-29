@@ -20,6 +20,29 @@ export interface ArchStore {
   save(list: Architecture[]): Promise<void>
 }
 
+/**
+ * Union two architecture lists by id, newest `updatedAt` winning a conflict.
+ * Pure.
+ *
+ * This is what stops the switch to disk-backed storage from looking like data
+ * loss: diagrams drawn before the orchestrator existed live only in
+ * localStorage, and a plain "disk wins" load would show an empty canvas and
+ * then overwrite them on the next edit. Adopting them instead means the first
+ * run with the orchestrator up migrates old work onto disk.
+ *
+ * A local-only entry is safe to adopt because every save writes through to
+ * localStorage — so a diagram deleted through the app is gone from both sides,
+ * and one that exists only locally is one that never reached disk.
+ */
+export function mergeArchitectures(remote: Architecture[], local: Architecture[]): Architecture[] {
+  const byId = new Map<string, Architecture>()
+  for (const arch of [...remote, ...local]) {
+    const existing = byId.get(arch.id)
+    if (!existing || arch.updatedAt > existing.updatedAt) byId.set(arch.id, arch)
+  }
+  return [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
 /** localStorage only. The offline default and the orchestrator store's cache. */
 export const localArchStore: ArchStore = {
   kind: 'local',
@@ -50,9 +73,13 @@ export function orchestratorArchStore(base: string): ArchStore {
         const body = (await res.json()) as { architectures?: unknown }
         // Re-validate rather than trusting the wire, exactly as the server
         // re-validates what the browser sends it.
-        const list = parseArchitectures(JSON.stringify(body.architectures ?? []))
-        saveArchitectures(list)
-        return list
+        const remote = parseArchitectures(JSON.stringify(body.architectures ?? []))
+        // Merge rather than let disk win outright, so work drawn before the
+        // orchestrator existed is adopted instead of appearing to vanish. The
+        // hook writes the result straight back, which lands it on disk.
+        const merged = mergeArchitectures(remote, loadArchitectures())
+        saveArchitectures(merged)
+        return merged
       } catch {
         return loadArchitectures()
       }
