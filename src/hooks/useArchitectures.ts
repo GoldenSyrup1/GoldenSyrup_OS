@@ -14,6 +14,7 @@ import {
   resizeBlock,
   setBlockColor,
   setBlockImage,
+  setBlockKind,
   setBlockParent,
   setBlockText,
   updateKind,
@@ -47,6 +48,7 @@ export interface ArchitecturesApi {
   reposition: (blockId: string, pos: { x: number; y: number }) => void
   // --- full canvas ---
   recolorBlock: (blockId: string, color: string | undefined) => void
+  changeBlockKind: (blockId: string, kind: string) => void
   resize: (blockId: string, size: { width: number; height: number }) => void
   setText: (blockId: string, text: string) => void
   setImage: (blockId: string, src: string) => void
@@ -191,6 +193,10 @@ export function useArchitectures(): ArchitecturesApi {
     (blockId: string, color: string | undefined) => mutate((a) => setBlockColor(a, blockId, color, Date.now())),
     [mutate],
   )
+  const changeBlockKind = useCallback(
+    (blockId: string, kind: string) => mutate((a) => setBlockKind(a, blockId, kind, Date.now())),
+    [mutate],
+  )
   const resize = useCallback(
     (blockId: string, size: { width: number; height: number }) =>
       mutate((a) => resizeBlock(a, blockId, size, Date.now())),
@@ -287,6 +293,7 @@ export function useArchitectures(): ArchitecturesApi {
     reposition,
     buildFromPrompt,
     recolorBlock,
+    changeBlockKind,
     resize,
     setText,
     setImage,

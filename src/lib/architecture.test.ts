@@ -126,6 +126,7 @@ import {
   setBlockText,
   updateKind,
   updateLink,
+  setBlockKind,
 } from './architecture'
 
 /** Architecture with `n` blocks added, returning ids alongside for convenience. */
@@ -365,5 +366,23 @@ describe('toFlowNodes with the full canvas', () => {
   it('sinks a group behind its children so it does not cover them', () => {
     const { arch } = withBlocks(['group'])
     expect(toFlowNodes(arch)[0].style).toMatchObject({ zIndex: -1 })
+  })
+})
+
+describe('setBlockKind', () => {
+  it('relabels a block that still carries its old kind name', () => {
+    let a = addKind(createArchitecture('K', seed), { label: 'Pillar', color: '#f00', icon: '🏛️' }, seed)
+    const kindId = a.kinds![0].id
+    a = addBlock(a, 'service', '', { x: 0, y: 0 }, seed) // label defaults to "Service"
+    a = setBlockKind(a, a.blocks[0].id, kindId, seed)
+    expect(a.blocks[0]).toMatchObject({ kind: kindId, label: 'Pillar' })
+  })
+
+  it('keeps a label the user actually wrote', () => {
+    let a = addKind(createArchitecture('K', seed), { label: 'Pillar', color: '#f00', icon: '🏛️' }, seed)
+    const kindId = a.kinds![0].id
+    a = addBlock(a, 'service', 'Booking API', { x: 0, y: 0 }, seed)
+    a = setBlockKind(a, a.blocks[0].id, kindId, seed)
+    expect(a.blocks[0]).toMatchObject({ kind: kindId, label: 'Booking API' })
   })
 })

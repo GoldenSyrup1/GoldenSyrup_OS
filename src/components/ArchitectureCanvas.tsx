@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ReactFlow,
   Background,
@@ -12,10 +12,26 @@ import {
   type NodeChange,
 } from '@xyflow/react'
 import type { ArchBlockKind } from '../types'
-import { BLOCK_KINDS, toFlowEdges, toFlowNodes } from '../lib/architecture'
+import { BLOCK_COLORS, availableKinds, toFlowEdges, toFlowNodes } from '../lib/architecture'
 import type { ArchitecturesApi } from '../hooks/useArchitectures'
+import ArchBlockNode from './ArchBlockNode'
+import ArchInspector from './ArchInspector'
 
-const KIND_ORDER: ArchBlockKind[] = ['client', 'service', 'datastore', 'queue', 'external', 'note']
+/** Built-ins in drawing order; custom kinds are appended after these. */
+const KIND_ORDER: ArchBlockKind[] = [
+  'client',
+  'service',
+  'datastore',
+  'queue',
+  'external',
+  'note',
+  'group',
+  'image',
+]
+
+// Defined once at module scope: a fresh object each render makes React Flow
+// remount every node.
+const nodeTypes = { arch: ArchBlockNode }
 
 /**
  * Editable architecture canvas. Nodes/edges are projected from the current
@@ -41,6 +57,11 @@ export default function ArchitectureCanvas({ api }: { api: ArchitecturesApi }) {
         if (c.type === 'position' && c.dragging === false && c.position) {
           api.reposition(c.id, c.position)
         }
+        // Persist a drag-resize only once the handle is released, the same rule
+        // the position case follows — otherwise every pixel writes to storage.
+        if (c.type === 'dimensions' && c.resizing === false && c.dimensions) {
+          api.resize(c.id, c.dimensions)
+        }
       }
     },
     [onNodesChange, api],
@@ -62,20 +83,51 @@ export default function ArchitectureCanvas({ api }: { api: ArchitecturesApi }) {
     [api],
   )
 
-  // Double-click a node to rename it.
+  // Double-click renames — except on a note, where the body text is the point.
   const onNodeDoubleClick = useCallback(
     (_: unknown, node: Node) => {
-      const current = String(node.data?.label ?? '').replace(/^\S+\s/, '')
-      const next = window.prompt('Rename block', current)
+      const block = current?.blocks.find((b) => b.id === node.id)
+      if (block?.kind === 'note') {
+        const next = window.prompt('Note text', block.text ?? '')
+        if (next != null) api.setText(node.id, next)
+        return
+      }
+      const next = window.prompt('Rename block', block?.label ?? '')
       if (next != null) api.renameCurrentBlock(node.id, next)
     },
-    [api],
+    [api, current],
   )
 
-  const selectedCount = nodes.filter((n) => n.selected).length + edges.filter((e) => e.selected).length
+  const selectedNodes = nodes.filter((n) => n.selected)
+  const selectedEdges = edges.filter((e) => e.selected)
+  const selectedCount = selectedNodes.length + selectedEdges.length
   const deleteSelected = () => {
-    nodes.filter((n) => n.selected).forEach((n) => api.deleteBlock(n.id))
-    edges.filter((e) => e.selected).forEach((e) => api.deleteLink(e.id))
+    selectedNodes.forEach((n) => api.deleteBlock(n.id))
+    selectedEdges.forEach((e) => api.deleteLink(e.id))
+  }
+
+  // Drop the selected blocks into the one selected group, or release them.
+  const groupSelected = () => {
+    const group = selectedNodes.find((n) => current?.blocks.find((b) => b.id === n.id)?.kind === 'group')
+    if (!group) return
+    selectedNodes.filter((n) => n.id !== group.id).forEach((n) => api.setParent(n.id, group.id))
+  }
+  const ungroupSelected = () => selectedNodes.forEach((n) => api.setParent(n.id, undefined))
+
+  const kinds = useMemo(() => {
+    if (!current) return []
+    const all = availableKinds(current)
+    const order = new Map(KIND_ORDER.map((k, i) => [k as string, i]))
+    // Built-ins in their drawing order first, then Sriram's own kinds.
+    return [...all].sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99))
+  }, [current])
+
+  const defineKind = () => {
+    const label = window.prompt('New block kind — name it (e.g. "Pillar", "Ritual", "Person")')
+    if (!label?.trim()) return
+    const icon = window.prompt('An emoji for it', '⬜') ?? '⬜'
+    const color = window.prompt(`A hex colour (one of ${BLOCK_COLORS.slice(0, 4).join(', ')}…)`, '#39c5cf')
+    api.defineKind({ label, icon, color: color?.trim() || '#39c5cf' })
   }
 
   if (!current) {
@@ -91,29 +143,54 @@ export default function ArchitectureCanvas({ api }: { api: ArchitecturesApi }) {
       {/* Manual toolbar */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-ink-600 bg-ink-800/80 p-2">
         <span className="px-1 text-[11px] uppercase tracking-wide text-gray-500">Add block</span>
-        {KIND_ORDER.map((kind) => {
-          const k = BLOCK_KINDS[kind]
-          return (
-            <button
-              key={kind}
-              type="button"
-              onClick={() => api.addManualBlock(kind)}
-              className="flex items-center gap-1.5 rounded-lg border border-ink-600 bg-ink-900 px-2.5 py-1.5 text-xs text-gray-200 transition-colors hover:border-syrup-700"
-              style={{ boxShadow: `inset 3px 0 0 ${k.color}` }}
-            >
-              <span aria-hidden>{k.icon}</span>
-              {k.label}
-            </button>
-          )
-        })}
+        {kinds.map((k) => (
+          <button
+            key={k.id}
+            type="button"
+            onClick={() => api.addManualBlock(k.id)}
+            className="flex items-center gap-1.5 rounded-lg border border-ink-600 bg-ink-900 px-2.5 py-1.5 text-xs text-gray-200 transition-colors hover:border-syrup-700"
+            style={{ boxShadow: `inset 3px 0 0 ${k.color}` }}
+          >
+            <span aria-hidden>{k.icon}</span>
+            {k.label}
+          </button>
+        ))}
         <button
           type="button"
-          onClick={deleteSelected}
-          disabled={selectedCount === 0}
-          className="ml-auto rounded-lg border border-ink-600 bg-ink-900 px-2.5 py-1.5 text-xs text-red-300 transition-colors hover:border-red-700 disabled:opacity-40"
+          onClick={defineKind}
+          title="Define your own block type — it persists and carries to new diagrams"
+          className="rounded-lg border border-dashed border-ink-600 bg-ink-900 px-2.5 py-1.5 text-xs text-syrup-200 transition-colors hover:border-syrup-700"
         >
-          🗑 Delete{selectedCount ? ` (${selectedCount})` : ''}
+          ＋ New kind
         </button>
+
+        <span className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={groupSelected}
+            disabled={selectedNodes.length < 2}
+            title="Select a group plus the blocks to put inside it"
+            className="rounded-lg border border-ink-600 bg-ink-900 px-2.5 py-1.5 text-xs text-gray-200 transition-colors hover:border-syrup-700 disabled:opacity-40"
+          >
+            🗂 Group
+          </button>
+          <button
+            type="button"
+            onClick={ungroupSelected}
+            disabled={selectedNodes.length === 0}
+            className="rounded-lg border border-ink-600 bg-ink-900 px-2.5 py-1.5 text-xs text-gray-200 transition-colors hover:border-syrup-700 disabled:opacity-40"
+          >
+            Ungroup
+          </button>
+          <button
+            type="button"
+            onClick={deleteSelected}
+            disabled={selectedCount === 0}
+            className="rounded-lg border border-ink-600 bg-ink-900 px-2.5 py-1.5 text-xs text-red-300 transition-colors hover:border-red-700 disabled:opacity-40"
+          >
+            🗑 Delete{selectedCount ? ` (${selectedCount})` : ''}
+          </button>
+        </span>
       </div>
 
       {/* Canvas */}
@@ -127,6 +204,7 @@ export default function ArchitectureCanvas({ api }: { api: ArchitecturesApi }) {
           onNodesDelete={onNodesDelete}
           onEdgesDelete={onEdgesDelete}
           onNodeDoubleClick={onNodeDoubleClick}
+          nodeTypes={nodeTypes}
           fitView
           proOptions={{ hideAttribution: true }}
         >
@@ -136,8 +214,15 @@ export default function ArchitectureCanvas({ api }: { api: ArchitecturesApi }) {
         </ReactFlow>
       </div>
       <p className="text-[11px] text-gray-600">
-        Drag from a block's edge to connect · double-click to rename · select + Delete to remove
+        Drag from a block's edge to connect · double-click to rename (or edit a note's text) ·
+        drag a corner to resize · select + Delete to remove
       </p>
+
+      <ArchInspector
+        api={api}
+        selectedBlockId={selectedNodes.length === 1 ? selectedNodes[0].id : null}
+        selectedLinkId={selectedEdges.length === 1 ? selectedEdges[0].id : null}
+      />
 
       <ArchitectPrompt api={api} />
     </div>

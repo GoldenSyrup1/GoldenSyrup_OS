@@ -202,6 +202,25 @@ export function setBlockParent(
   )
 }
 
+/**
+ * Change a block's kind. If the block still carries the old kind's name as its
+ * label, relabel it too — otherwise switching a "Service" to a "Pillar" leaves
+ * a block called Service, which reads as a bug.
+ */
+export function setBlockKind(arch: Architecture, blockId: string, kind: string, seed: number): Architecture {
+  return touch(
+    {
+      ...arch,
+      blocks: arch.blocks.map((b) => {
+        if (b.id !== blockId) return b
+        const wasDefaultLabel = b.label === resolveKind(arch, b.kind).label
+        return { ...b, kind, ...(wasDefaultLabel ? { label: resolveKind(arch, kind).label } : {}) }
+      }),
+    },
+    seed,
+  )
+}
+
 /** Set the image source of an `image` block. */
 export function setBlockImage(arch: Architecture, blockId: string, src: string, seed: number): Architecture {
   return touch(
@@ -424,8 +443,9 @@ export function toFlowNodes(arch: Architecture): Node[] {
 
     return {
       id: b.id,
+      type: 'arch',
       position: { x: b.x, y: b.y },
-      data: { label: `${kind.icon} ${b.label}`, block: b, color },
+      data: { label: isGroup || isImage ? b.label : `${kind.icon} ${b.label}`, block: b, color },
       style,
       ...(b.parentId ? { parentId: b.parentId, extent: 'parent' as const } : {}),
     }
