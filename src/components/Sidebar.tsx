@@ -10,6 +10,7 @@ const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: '🏠' },
   { id: 'cowork', label: 'Cowork', icon: '🤝' },
   { id: 'architectures', label: 'Architectures', icon: '🧩' },
+  { id: 'fitness', label: 'Fitness', icon: '💪' },
 ]
 
 /**

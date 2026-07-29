@@ -154,8 +154,87 @@ export interface Architecture {
   updatedAt: number
 }
 
-/** The three top-level views selectable from the sidebar rail. */
-export type AppView = 'dashboard' | 'cowork' | 'architectures'
+// --- Fitness (ability-first tracking) ---------------------------------------
+
+/** Training discipline an ability belongs to. Drives the left rail on the board. */
+export type Discipline =
+  | 'calisthenics'
+  | 'plyometrics'
+  | 'isometrics'
+  | 'cardio'
+  | 'flexibility'
+  | 'taekwondo'
+  | 'strength'
+
+/** How an ability is measured. Determines the unit shown next to every number. */
+export type AbilityMetric = 'reps' | 'hold' | 'distance' | 'time' | 'angle' | 'load' | 'binary'
+
+/**
+ * One rung on the ladder toward an ability (e.g. "wall handstand 60s" on the way
+ * to a freestanding handstand). All values are entered by hand — nothing here is
+ * measured or synced from a device.
+ */
+export interface ProgressionStep {
+  id: string
+  name: string
+  /** Value that counts as owning this rung, in the ability's unit. */
+  target: number
+  /** Current best, manually entered. */
+  current: number
+  /**
+   * Baseline for `lowerIsBetter` abilities (e.g. the 5k time you started from),
+   * so partial credit is measurable when smaller numbers mean better.
+   */
+  start?: number
+  note?: string
+}
+
+/** A manual entry against one rung, kept so a rung's trend is inspectable. */
+export interface AbilityLog {
+  /** ISO date (yyyy-mm-dd). */
+  date: string
+  stepId: string
+  value: number
+}
+
+/**
+ * A physical ability being chased — the unit of tracking. Progress is the share
+ * of the progression ladder actually owned, not time spent training.
+ */
+export interface Ability {
+  id: string
+  name: string
+  discipline: Discipline
+  metric: AbilityMetric
+  /** Overrides the metric's default unit label (e.g. 'm' instead of 'km'). */
+  unit?: string
+  /** What owning this ability looks like, in one line. */
+  goal?: string
+  /** True when a smaller number is better (a 5k time, a 100m sprint). */
+  lowerIsBetter?: boolean
+  /** Ordered easiest → hardest. */
+  steps: ProgressionStep[]
+  /** Parked for now (injury, off-season) — shown but excluded from "next up". */
+  paused?: boolean
+  history: AbilityLog[]
+  createdAt: number
+  updatedAt: number
+}
+
+/** A discipline rolled up from its abilities for the left rail. */
+export interface DisciplineRollup {
+  discipline: Discipline
+  abilityCount: number
+  /** Count of abilities fully owned (every rung at target). */
+  ownedCount: number
+  /** Mean progress across the discipline's abilities, 0..100. */
+  progress: number
+  /** Worst-case status across the discipline. */
+  status: Status
+}
+
+/** The top-level views selectable from the sidebar rail. */
+export type AppView = 'dashboard' | 'cowork' | 'architectures' | 'fitness'
 
 export type RunStatus = 'queued' | 'running' | 'done' | 'failed'
 

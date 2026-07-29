@@ -36,6 +36,15 @@ Sidebar rail (`components/Sidebar.tsx`) switches between three views in `src/vie
 - **Architectures** — flowchart/block builder on React Flow. `Create → New Architecture` opens an
   editable canvas with a manual toolbar (add/connect/rename/delete blocks) **and** a prompt box
   that generates blocks via the architect runner. Saved to localStorage.
+- **Fitness** — ability-first tracking: what Sriram can *do*, not what he did. The unit is an
+  **ability** (handstand, pull-up, pistol squat, full bodyweight on two hands, a flat split, a
+  540 kick), each owning an ordered **progression ladder**; progress is the share of that ladder
+  actually owned, with partial credit per rung. Disciplines: calisthenics, plyometrics,
+  isometrics, strength, cardio, flexibility, taekwondo. Saved to localStorage.
+  **Everything is manual entry — Sriram owns the exercise content; the board ships empty and
+  nothing is seeded, estimated, or synced from a device. Diet is deliberately out of scope.**
+  Cardio/times set `lowerIsBetter` with a per-rung `start` baseline so a faster 5K earns credit;
+  `binary` rungs turn a ladder into a checklist (the Cho Dan Bo → 1st Dan belt path).
 
 ## Runner seam (prompt → work)
 `lib/runner.ts` (Command Console) and `lib/architect.ts` (Architectures) both split stub ⇄
@@ -75,9 +84,11 @@ src/
   lib/util.ts           pure helpers (status color, progress aggregation) — unit tested
   lib/architecture.ts   architecture graph ops + React Flow projection — unit tested
   lib/architect.ts      prompt → graph patch (stub ⇄ orchestrator) — unit tested
-  hooks/                useLiveData, useCommandConsole, useCowork, useArchitectures
-  components/           ProgressRing, StatusDot, Card, Sidebar, CoworkBoard, ArchitectureCanvas, …
-  views/                DashboardView, CoworkView, ArchitecturesView
+  lib/fitness.ts        ability/ladder ops + progress maths + persistence — unit tested
+  hooks/                useLiveData, useCommandConsole, useCowork, useArchitectures, useFitness
+  components/           ProgressRing, StatusDot, Card, Sidebar, CoworkBoard, ArchitectureCanvas,
+                        FitnessBoard, …
+  views/                DashboardView, CoworkView, ArchitecturesView, FitnessView
   App.tsx               shell: sidebar + view switch
   test/setup.ts         jest-dom matchers
 ```
@@ -104,8 +115,14 @@ src/
   Not auto-fixed because `audit fix --force` pulls vite@8 (breaking). Revisit on a Vite major bump.
 
 ## Status
-Sidebar shell shipped with three views: Dashboard, Cowork (bridge-file board), Architectures
-(React Flow builder with manual toolbar + prompt). Tests passing, production build green.
+Sidebar shell shipped with four views: Dashboard, Cowork (bridge-file board), Architectures
+(React Flow builder with manual toolbar + prompt), Fitness (ability ladders).
+
+⚠️ **Fitness is written but its test run has not been observed** — `src/lib/fitness.test.ts`
+(progress maths, ladder edits, rollups, persistence round-trip) and `src/views/FitnessView.test.tsx`
+(create → add steps → log → owned, discipline rail, persistence, pause/delete) exist but
+`npm test` was interrupted before a result was seen. Run `npm test` and `npm run build` before
+trusting them. Everything prior to Fitness was passing.
 
 The orchestrator now exists (`orchestrator/`), so `/architect` and `/run` are real rather than
 stubbed. `/run` is verified end-to-end against the `claude` CLI; **`/architect`'s Claude API call
@@ -114,5 +131,5 @@ API reference, and its routing, validation, error handling, CORS, and schema/coe
 but the first real prompt is unproven. Set `ANTHROPIC_API_KEY` in `orchestrator/.env` and send one
 before trusting it.
 
-Next: that first live `/architect` prompt; connect the desktop Cowork folder to keep
-`public/cowork-state.json` live; real job/trade data (seed has samples).
+Next: verify the Fitness suite; that first live `/architect` prompt; connect the desktop Cowork
+folder to keep `public/cowork-state.json` live; real job/trade data (seed has samples).

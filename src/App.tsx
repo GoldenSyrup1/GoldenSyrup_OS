@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar'
 import DashboardView from './views/DashboardView'
 import CoworkView from './views/CoworkView'
 import ArchitecturesView from './views/ArchitecturesView'
+import FitnessView from './views/FitnessView'
 
 export default function App() {
   const [view, setView] = useState<AppView>('dashboard')
@@ -16,6 +17,7 @@ export default function App() {
           {view === 'dashboard' && <DashboardView />}
           {view === 'cowork' && <CoworkView />}
           {view === 'architectures' && <ArchitecturesView />}
+          {view === 'fitness' && <FitnessView />}
         </div>
       </main>
     </div>
