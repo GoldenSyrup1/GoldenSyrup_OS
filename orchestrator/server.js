@@ -16,15 +16,25 @@
 // It binds loopback and allows only the dev/preview origins.
 
 import { spawn } from 'node:child_process'
-import { statSync } from 'node:fs'
-import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
+import { existsSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Anthropic from '@anthropic-ai/sdk'
 import cors from 'cors'
 import express from 'express'
+import {
+  SESSION_COOKIE,
+  SESSION_TTL_MS,
+  parseCookies,
+  resolveSessionSecret,
+  safeEqual,
+  serializeCookie,
+  signToken,
+  verifyToken,
+} from './lib/auth.js'
 import { ARCHITECTURE_SCHEMA, MAX_BLOCKS, toPatch } from './lib/patch.js'
-import { archFileName, architectureContext, sanitizeArchitecture, sanitizeArchitectures } from './lib/store.js'
+import { architectureContext, sanitizeArchitecture, sanitizeArchitectures } from './lib/store.js'
+import { fileStorage, postgresStorage } from './lib/storage.js'
 
 // Sonnet 5 rather than Opus: drawing a handful of blocks from one sentence does
 // not need the top tier, and this is a prompt box that gets hammered while
@@ -41,8 +51,30 @@ const ARCHITECTURES_DIR = process.env.ARCHITECTURES_DIR
   ? path.resolve(process.env.ARCHITECTURES_DIR)
   : fileURLToPath(new URL('../architectures/', import.meta.url))
 
-const PORT = Number(process.env.ORCHESTRATOR_PORT) || 8787
-const HOST = '127.0.0.1'
+// Railway supplies PORT and needs a public bind; locally we stay on loopback
+// because this process can spawn Claude Code on the filesystem.
+const HOSTED = Boolean(process.env.PORT || process.env.DATABASE_URL)
+const PORT = Number(process.env.PORT || process.env.ORCHESTRATOR_PORT) || 8787
+const HOST = HOSTED ? '0.0.0.0' : '127.0.0.1'
+
+const PASSWORD = process.env.OS_PASSWORD ?? ''
+const AUTH_ON = PASSWORD.length > 0
+const SESSION_SECRET = resolveSessionSecret(process.env.OS_SESSION_SECRET)
+
+// The interlock. Reachable from a network + an API key + no password = an open
+// proxy spending Sriram's credit, so refuse to boot rather than serve it.
+if (HOSTED && !AUTH_ON) {
+  console.error('Refusing to start: this instance is network-reachable but OS_PASSWORD is not set.')
+  console.error('Set OS_PASSWORD (and OS_SESSION_SECRET) so /architect is not an open proxy.')
+  process.exit(1)
+}
+
+/**
+ * `/run` spawns Claude Code on the local filesystem. On a hosted box there are
+ * no repos to work in and it would be remote code execution, so it exists only
+ * when running locally.
+ */
+const RUN_ENABLED = !HOSTED
 const ALLOWED_ORIGINS = (process.env.ORCHESTRATOR_ALLOWED_ORIGINS ?? 'http://localhost:5180,http://localhost:4173')
   .split(',')
   .map((o) => o.trim())
@@ -62,12 +94,61 @@ if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
   console.warn('Paste the full key from https://console.anthropic.com/settings/keys into orchestrator/.env.')
 }
 
+// Postgres on Railway (a container's disk is ephemeral — a redeploy would take
+// the diagrams with it), the repo directory locally.
+let storage = fileStorage(ARCHITECTURES_DIR)
+if (process.env.DATABASE_URL) {
+  const { default: pg } = await import('pg')
+  const pool = new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false },
+  })
+  storage = postgresStorage(pool)
+}
+
 const client = new Anthropic()
 const app = express()
-app.use(cors({ origin: ALLOWED_ORIGINS }))
+app.use(cors({ origin: ALLOWED_ORIGINS, credentials: true }))
 // 64kb was plenty for a prompt, but a PUT /architectures carries every diagram
 // at once and a canvas of a few hundred blocks clears it easily.
 app.use(express.json({ limit: '2mb' }))
+
+// ---- auth ------------------------------------------------------------------
+
+const isSecure = (req) => req.secure || req.get('x-forwarded-proto') === 'https'
+
+/** Whether this request carries a valid session. Always true when auth is off. */
+function authed(req) {
+  if (!AUTH_ON) return true
+  return verifyToken(SESSION_SECRET, parseCookies(req.get('cookie'))[SESSION_COOKIE], Date.now())
+}
+
+app.get('/auth/status', (req, res) => res.json({ required: AUTH_ON, authed: authed(req) }))
+
+app.post('/auth/login', (req, res) => {
+  if (!AUTH_ON) return res.json({ authed: true })
+  const supplied = typeof req.body?.password === 'string' ? req.body.password : ''
+  if (!supplied || !safeEqual(supplied, PASSWORD)) {
+    return res.status(401).json({ error: 'Wrong password.' })
+  }
+  const token = signToken(SESSION_SECRET, Date.now() + SESSION_TTL_MS)
+  res.setHeader(
+    'Set-Cookie',
+    serializeCookie(SESSION_COOKIE, token, { maxAgeMs: SESSION_TTL_MS, secure: isSecure(req) }),
+  )
+  res.json({ authed: true })
+})
+
+app.post('/auth/logout', (req, res) => {
+  res.setHeader('Set-Cookie', serializeCookie(SESSION_COOKIE, '', { maxAgeMs: 0, secure: isSecure(req) }))
+  res.json({ authed: false })
+})
+
+/** Gate everything that costs money, touches data, or runs a process. */
+function requireAuth(req, res, next) {
+  if (authed(req)) return next()
+  res.status(401).json({ error: 'Not signed in.' })
+}
 
 const ARCHITECT_SYSTEM = `You turn a short description of a software system into a small architecture diagram.
 
@@ -81,7 +162,7 @@ Emit blocks and the directed links between them:
 Choose the block "kind" that fits: "client" for user-facing entry points, "service" for compute you own, "datastore" for anything that persists state, "queue" for async transport, "external" for third-party APIs, "note" for annotations.`
 
 /** Prompt -> architecture graph, with the reply constrained to ARCHITECTURE_SCHEMA. */
-app.post('/architect', async (req, res) => {
+app.post('/architect', requireAuth, async (req, res) => {
   const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : ''
   if (!prompt) return res.status(400).json({ error: 'prompt is required' })
 
@@ -135,61 +216,22 @@ app.post('/architect', async (req, res) => {
 
 // ---- durable architectures -------------------------------------------------
 
-/** Read every architecture on disk, newest first. Missing dir ⇒ empty list. */
-async function readArchitectures() {
-  let names
-  try {
-    names = await readdir(ARCHITECTURES_DIR)
-  } catch (err) {
-    if (err.code === 'ENOENT') return []
-    throw err
-  }
-  const files = names.filter((n) => n.endsWith('.json'))
-  const parsed = await Promise.all(
-    files.map(async (name) => {
-      try {
-        return sanitizeArchitecture(JSON.parse(await readFile(path.join(ARCHITECTURES_DIR, name), 'utf8')))
-      } catch {
-        // A hand-edited or half-written file shouldn't take the whole list down.
-        console.warn(`architectures: skipping unreadable ${name}`)
-        return null
-      }
-    }),
-  )
-  return parsed.filter(Boolean).sort((a, b) => b.updatedAt - a.updatedAt)
-}
-
-app.get('/architectures', async (_req, res) => {
-  res.json({ architectures: await readArchitectures() })
+app.get('/architectures', requireAuth, async (_req, res) => {
+  res.json({ architectures: await storage.read() })
 })
 
 /**
  * Replace the stored set with the client's. The browser owns the canvas state,
  * so this is a whole-list PUT rather than per-architecture writes — which means
- * deletes have to be honoured by pruning files no longer in the payload.
+ * deletes have to be honoured by pruning whatever is no longer in the payload.
  */
-app.put('/architectures', async (req, res) => {
+app.put('/architectures', requireAuth, async (req, res) => {
   if (!Array.isArray(req.body?.architectures)) {
     return res.status(400).json({ error: 'architectures must be an array' })
   }
   const list = sanitizeArchitectures(req.body.architectures)
-
-  await mkdir(ARCHITECTURES_DIR, { recursive: true })
-  const keep = new Set()
-  for (const arch of list) {
-    const file = archFileName(arch)
-    keep.add(file)
-    await writeFile(path.join(ARCHITECTURES_DIR, file), `${JSON.stringify(arch, null, 2)}\n`, 'utf8')
-  }
-
-  // Prune both deleted architectures and the stale file left behind by a rename
-  // (the slug changes, so the same id would otherwise sit under two names).
-  const existing = await readdir(ARCHITECTURES_DIR)
-  for (const name of existing) {
-    if (name.endsWith('.json') && !keep.has(name)) await unlink(path.join(ARCHITECTURES_DIR, name))
-  }
-
-  console.log(`/architectures  saved ${list.length} to ${ARCHITECTURES_DIR}`)
+  await storage.write(list)
+  console.log(`/architectures  saved ${list.length} to ${storage.describe()}`)
   res.json({ architectures: list })
 })
 
@@ -201,7 +243,12 @@ app.put('/architectures', async (req, res) => {
  * so a diagram Sriram drew ships as context with the request instead of being
  * something only he can see.
  */
-app.post('/run', (req, res) => {
+app.post('/run', requireAuth, (req, res) => {
+  if (!RUN_ENABLED) {
+    return res.status(501).json({
+      error: 'Claude Code runs are local-only — start the orchestrator on your laptop to use /run.',
+    })
+  }
   const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : ''
   if (!prompt) return res.status(400).json({ error: 'prompt is required' })
 
@@ -282,6 +329,23 @@ app.post('/run', (req, res) => {
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'goldensyrup-os-orchestrator' }))
 
+// ---- the site itself -------------------------------------------------------
+//
+// When a build exists, serve it from this same process. One origin means no
+// CORS, and it means Sriram opens one Railway URL rather than wiring a separate
+// frontend host to a separate API host.
+const DIST_DIR = fileURLToPath(new URL('../dist/', import.meta.url))
+if (existsSync(DIST_DIR)) {
+  app.use(express.static(DIST_DIR))
+  // SPA fallback: anything not matched above and not an API path is the app.
+  // The boundary must be `/` or end-of-path, not \b: \b also matches before a
+  // hyphen, so `/architecture-notes` would be read as the API and 404 rather
+  // than loading the app.
+  app.get(/^(?!\/(architect|architectures|run|health|auth)(?:\/|$)).*/, (_req, res) => {
+    res.sendFile(path.join(DIST_DIR, 'index.html'))
+  })
+}
+
 // Express 5 funnels rejected route promises here. Report the upstream status
 // where there is one (401 bad key, 429 rate limit) instead of a blanket 500.
 app.use((err, _req, res, _next) => {
@@ -293,5 +357,8 @@ app.use((err, _req, res, _next) => {
 app.listen(PORT, HOST, () => {
   console.log(`orchestrator on http://${HOST}:${PORT}  (origins: ${ALLOWED_ORIGINS.join(', ')})`)
   console.log(`/architect model: ${ARCHITECT_MODEL} (effort ${ARCHITECT_EFFORT})`)
-  console.log(`architectures:   ${ARCHITECTURES_DIR}`)
+  console.log(`architectures:   ${storage.describe()} (${storage.kind})`)
+  console.log(`auth:            ${AUTH_ON ? 'password required' : 'OFF (local only)'}`)
+  console.log(`/run:            ${RUN_ENABLED ? 'enabled' : 'disabled (hosted)'}`)
+  console.log(`site:            ${existsSync(DIST_DIR) ? 'serving ../dist' : 'not built — API only'}`)
 })

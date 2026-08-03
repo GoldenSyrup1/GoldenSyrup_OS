@@ -86,6 +86,38 @@ Two traps worth knowing, both found by driving the endpoints rather than reading
   Watch `res`, not `req`.
 - `claude -p` blocks ~3s waiting for stdin unless you spawn it with `stdio: ['ignore', ...]`.
 
+## Deploying it as a real website (Railway)
+
+**One service, one process, one URL.** The orchestrator serves the built `dist/` *and* the
+API, so there is no separate frontend host, no CORS, and nothing to keep in sync. Railway
+runs `npm run build:hosted` then `npm run start:hosted` (`railway.json`).
+
+The three things that change the moment it is not on the laptop:
+
+- **Auth becomes mandatory, enforced at boot.** The server calls itself hosted when `PORT`
+  or `DATABASE_URL` is set, and then **refuses to start without `OS_PASSWORD`** — a public
+  URL plus an Anthropic key plus no password is an open proxy billed to Sriram. The browser
+  proves itself once and carries an httpOnly cookie (`orchestrator/lib/auth.js` — HMAC over
+  an expiry, no JWT dependency parsing attacker-controlled tokens). `LoginGate` wraps `<App/>`
+  *outside* it, so no view mounts and no adapter fetches before the lock state is known.
+  Set `OS_SESSION_SECRET` too, or every redeploy signs you out (unset ⇒ random per boot).
+- **`/run` turns itself off.** It spawns `claude -p` on the filesystem; on a hosted box there
+  are no repos to work in and it would be plain remote code execution. Hosted returns 501 —
+  Claude Code runs stay local, by design, not by oversight.
+- **Storage moves to Postgres.** A container's disk is ephemeral, so `architectures/*.json`
+  would die on redeploy. Attaching a Railway Postgres sets `DATABASE_URL`, which switches
+  `orchestrator/lib/storage.js` from the file backend to a table. Same interface, chosen by
+  environment rather than a flag anyone has to remember. Locally it stays files-in-the-repo,
+  which is what keeps diagrams readable to agents in this checkout.
+
+`build:hosted` bakes `VITE_OS_ORCHESTRATOR_BASE=same-origin` into the bundle — a sentinel
+meaning "call relative paths" (`src/lib/env.ts`), because the base URL is then the empty
+string, which is otherwise exactly how we spell *not configured*. It is a script rather than
+a Railway variable so a forgotten build var can't silently ship a site running on stubs.
+
+Railway variables to set: `ANTHROPIC_API_KEY`, `OS_PASSWORD`, `OS_SESSION_SECRET`, and
+`DATABASE_URL` (from the attached Postgres). Do not set `PORT`.
+
 ## Project structure
 ```
 src/
@@ -96,6 +128,8 @@ src/
   lib/architecture.ts   architecture graph ops + React Flow projection — unit tested
   lib/architect.ts      prompt → graph patch (stub ⇄ orchestrator) — unit tested
   lib/archStore.ts      architecture persistence (localStorage ⇄ disk) — unit tested
+  lib/auth.ts           browser half of the session auth (hosted only)
+  components/LoginGate  password gate wrapping <App/> when the deployment is locked
   lib/fitness.ts        ability/ladder ops + progress maths + persistence — unit tested
   hooks/                useLiveData, useCommandConsole, useCowork, useArchitectures, useFitness
   components/           ProgressRing, StatusDot, Card, Sidebar, CoworkBoard, ArchitectureCanvas,
@@ -111,6 +145,9 @@ src/
 - `npm test` — run the Vitest suite (run mode).
 - `npm run build` — typecheck + production build.
 - `npm run lint` — typecheck only.
+- `npm run build:hosted` / `npm run start:hosted` — what Railway runs (see Deploying above).
+  To rehearse a deploy locally: `npm run build:hosted`, then
+  `PORT=8899 OS_PASSWORD=... OS_SESSION_SECRET=... npm run start:hosted`.
 
 ## Conventions (standing rules — follow without being asked)
 - **Testing is mandatory.** Every change ships with tests + a stated result. Pure logic in
@@ -145,6 +182,22 @@ one before trusting it.
 Architectures now persist to disk (see the runner seam above), which closes the "diagrams are
 invisible to agents" blocker. Note the browser only writes there while the orchestrator is
 running — the canvas badge reads **browser only** otherwise.
+
+**Hosting is ready and rehearsed, not yet deployed.** The Railway configuration was driven
+locally rather than reasoned about: the orchestrator was booted with `PORT` set and every
+endpoint exercised (30 checks) — the no-password interlock refuses to boot, the site and its
+built bundle are served, SPA fallback resolves while API paths still win, every data/spend
+endpoint 401s without a cookie, wrong and empty passwords are rejected, the session cookie is
+HttpOnly+SameSite=Lax, a forged cookie is rejected, the architectures round-trip and prune,
+`/run` returns 501, and logout re-locks. The Postgres backend was then verified against a real
+database, **including a restart with the data surviving** — the redeploy case it exists for.
+One bug fell out of this that no amount of reading would have: the SPA fallback used `\b` as
+its API-path boundary, which also matches before a hyphen, so `/architecture-notes` 404'd
+instead of loading the app. Fixed to a `/`-or-end boundary.
+
+What remains is the deploy itself: create the Railway service from this repo, attach a
+Postgres, set `ANTHROPIC_API_KEY` + `OS_PASSWORD` + `OS_SESSION_SECRET`. Still unproven after
+that: the first live `/architect` prompt (unchanged — it needs real credentials either way).
 
 Next: that first live `/architect` prompt; connect the desktop Cowork folder to keep
 `public/cowork-state.json` live; real job/trade data (seed has samples). The bigger open

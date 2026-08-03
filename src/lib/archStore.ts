@@ -68,7 +68,7 @@ export function orchestratorArchStore(base: string): ArchStore {
     kind: 'orchestrator',
     async load() {
       try {
-        const res = await fetch(`${base}/architectures`)
+        const res = await fetch(`${base}/architectures`, { credentials: 'include' })
         if (!res.ok) throw new Error(`orchestrator responded ${res.status}`)
         const body = (await res.json()) as { architectures?: unknown }
         // Re-validate rather than trusting the wire, exactly as the server
@@ -88,6 +88,7 @@ export function orchestratorArchStore(base: string): ArchStore {
       saveArchitectures(list)
       const res = await fetch(`${base}/architectures`, {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ architectures: list }),
       })
@@ -98,5 +99,5 @@ export function orchestratorArchStore(base: string): ArchStore {
 
 /** The active store: disk-backed when the orchestrator is configured. */
 export function pickArchStore(): ArchStore {
-  return env.orchestratorBase ? orchestratorArchStore(env.orchestratorBase) : localArchStore
+  return env.orchestratorEnabled ? orchestratorArchStore(env.orchestratorBase) : localArchStore
 }

@@ -170,6 +170,7 @@ export function orchestratorArchitect(base: string): Architect {
     async build(prompt) {
       const res = await fetch(`${base}/architect`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt }),
       })
@@ -181,5 +182,5 @@ export function orchestratorArchitect(base: string): Architect {
 
 /** The active architect: orchestrator when configured, otherwise the stub. */
 export function pickArchitect(): Architect {
-  return env.orchestratorBase ? orchestratorArchitect(env.orchestratorBase) : stubArchitect
+  return env.orchestratorEnabled ? orchestratorArchitect(env.orchestratorBase) : stubArchitect
 }

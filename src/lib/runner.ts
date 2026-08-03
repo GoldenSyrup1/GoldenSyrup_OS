@@ -78,6 +78,7 @@ export function orchestratorRunner(base: string): Runner {
       onUpdate({ status: 'running', log: `▸ dispatched to ${target.label}` })
       const res = await fetch(`${base}/run`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetId: target.id, path: target.path, prompt, architecture }),
       })
@@ -107,5 +108,5 @@ export function orchestratorRunner(base: string): Runner {
 
 /** The active runner: orchestrator when configured, otherwise the stub. */
 export function pickRunner(): Runner {
-  return env.orchestratorBase ? orchestratorRunner(env.orchestratorBase) : stubRunner
+  return env.orchestratorEnabled ? orchestratorRunner(env.orchestratorBase) : stubRunner
 }

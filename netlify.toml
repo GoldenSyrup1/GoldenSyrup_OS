@@ -2,6 +2,14 @@
 # This repo is a static frontend: Vite compiles it into dist/, and that is what
 # Netlify must publish. Without these, Netlify serves the raw repo root (which
 # references /src/main.tsx — uncompiled TS/JSX the browser can't run).
+#
+# NOTE: Railway (railway.json) is the real deploy target and this is NOT the same
+# site. Netlify can only host static files, so a build from here has no
+# orchestrator: no /architect, no durable architectures, no password gate — the
+# app runs entirely on its stubs and localStorage. That is a fine free preview of
+# the UI, but it is not the command centre. `npm run build`, not `build:hosted`,
+# is deliberate here: the same-origin sentinel would point the app at API routes
+# Netlify cannot serve.
 [build]
   command = "npm run build"
   publish = "dist"

@@ -6,8 +6,19 @@ export const env = {
   stallInBase: (import.meta.env.VITE_STALLIN_API_BASE ?? '').replace(/\/$/, ''),
   connectorBase: (import.meta.env.VITE_CONNECTOR_API_BASE ?? '').replace(/\/$/, ''),
   connectorToken: import.meta.env.VITE_CONNECTOR_READ_TOKEN ?? '',
-  /** Local orchestrator that runs Claude Code on-demand; empty ⇒ stub runner. */
-  orchestratorBase: (import.meta.env.VITE_OS_ORCHESTRATOR_BASE ?? '').replace(/\/$/, ''),
+  /**
+   * Orchestrator base URL; empty ⇒ stub runner.
+   *
+   * The literal `same-origin` means the orchestrator is serving this page (the
+   * hosted setup), so requests go to relative paths. That needs its own value
+   * because the URL prefix is then the empty string, which is otherwise how we
+   * spell "not configured".
+   */
+  orchestratorBase:
+    (import.meta.env.VITE_OS_ORCHESTRATOR_BASE ?? '') === 'same-origin'
+      ? ''
+      : (import.meta.env.VITE_OS_ORCHESTRATOR_BASE ?? '').replace(/\/$/, ''),
+  orchestratorEnabled: Boolean(import.meta.env.VITE_OS_ORCHESTRATOR_BASE),
   /**
    * URL of the Cowork bridge file. Claude for Desktop's Cowork is local-only with
    * no API, so it writes a JSON snapshot into a connected folder; point this at it.
