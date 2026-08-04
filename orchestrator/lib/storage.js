@@ -67,13 +67,22 @@ export function fileStorage(dir) {
 export function postgresStorage(pool) {
   let ready = null
   const ensure = () => {
-    ready ??= pool.query(
-      `create table if not exists architectures (
-         id text primary key,
-         data jsonb not null,
-         updated_at bigint not null
-       )`,
-    )
+    ready ??= pool
+      .query(
+        `create table if not exists architectures (
+           id text primary key,
+           data jsonb not null,
+           updated_at bigint not null
+         )`,
+      )
+      // Never cache a failure. `??=` won't replace a rejected promise, so one
+      // blip — the database still waking up while the app is already serving,
+      // which is the normal race on a Railway redeploy — would otherwise brick
+      // every later request until someone redeployed again.
+      .catch((err) => {
+        ready = null
+        throw err
+      })
     return ready
   }
 

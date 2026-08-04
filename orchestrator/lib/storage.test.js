@@ -101,6 +101,24 @@ describe('postgresStorage', () => {
     expect(sql(pool).filter((s) => s.includes('create table')).length).toBe(1)
   })
 
+  it('retries the create after a failure instead of caching it forever', async () => {
+    // The Railway race: the app is serving before the database accepts
+    // connections. A cached rejection would brick every later request.
+    const pool = fakePool()
+    let firstCall = true
+    const real = pool.query
+    pool.query = (text, params) => {
+      if (firstCall && text.includes('create table')) {
+        firstCall = false
+        return Promise.reject(new Error('ECONNREFUSED'))
+      }
+      return real(text, params)
+    }
+    const store = postgresStorage(pool)
+    await expect(store.read()).rejects.toThrow('ECONNREFUSED')
+    await expect(store.read()).resolves.toEqual([])
+  })
+
   it('sanitizes and orders rows coming back off the wire', async () => {
     const pool = fakePool([
       { data: arch('a', 'Alpha', 100) },

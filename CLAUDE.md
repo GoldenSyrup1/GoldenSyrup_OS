@@ -115,8 +115,21 @@ meaning "call relative paths" (`src/lib/env.ts`), because the base URL is then t
 string, which is otherwise exactly how we spell *not configured*. It is a script rather than
 a Railway variable so a forgotten build var can't silently ship a site running on stubs.
 
-Railway variables to set: `ANTHROPIC_API_KEY`, `OS_PASSWORD`, `OS_SESSION_SECRET`, and
-`DATABASE_URL` (from the attached Postgres). Do not set `PORT`.
+Railway variables to set on the **app** service: `ANTHROPIC_API_KEY`, `OS_PASSWORD`,
+`OS_SESSION_SECRET`, `DATABASE_URL`. Do not set `PORT`.
+
+**`DATABASE_URL` is not inherited — this is the trap.** Adding a Postgres to a Railway
+project creates a *separate service* that owns the variable; the app service sees nothing
+until you add a reference variable to it: `DATABASE_URL=${{Postgres.DATABASE_URL}}`. Miss it
+and nothing breaks loudly — the server falls back to the file backend, works fine, and
+quietly loses every diagram on the next deploy, which is the exact failure Postgres was
+added to prevent. **Check the boot log for `architectures: postgres (postgres)`.** If it
+says `filesystem`, the reference is missing.
+
+Second Railway-specific gotcha: if the log shows *"The server does not support SSL
+connections"*, set `PGSSLMODE=disable`. Railway's Postgres image is SSL-enabled, but the
+in-project private endpoint often doesn't negotiate TLS and we default to requiring it.
+That network is private to the project, so disabling it there costs nothing.
 
 ## Project structure
 ```
