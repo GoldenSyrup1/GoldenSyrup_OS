@@ -21,6 +21,16 @@ body {
   background-attachment: fixed;
 }
 
+/* React Flow's zoom/fit controls ship a near-white button background
+   (--xy-controls-button-background-color-default: #fefefe) but take their icon
+   colour from `inherit`. Under our dark theme that inherits body's #e6edf3, so
+   the glyphs rendered pale-grey-on-white and were invisible. The icons are
+   `fill: currentColor`, so pinning the colour is the whole fix. */
+.react-flow__controls {
+  --xy-controls-button-color: #000;
+  --xy-controls-button-color-hover: #000;
+}
+
 /* Respect reduced-motion: disable the decorative animations. */
 @media (prefers-reduced-motion: reduce) {
   *,

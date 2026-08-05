@@ -189,28 +189,58 @@ attached as context; `GET|PUT /architectures` is verified by driving it (write, 
 rename-prune, delete-prune, 400 on a bad body). **`/architect`'s Claude API call has still not
 been run against live credentials** — it was built and reviewed against the current API
 reference, and its routing, validation, error handling, CORS, and schema/coercion are tested,
-but the first real prompt is unproven. Set `ANTHROPIC_API_KEY` in `orchestrator/.env` and send
-one before trusting it.
+but the first real prompt is unproven. Send one before trusting it — either against the live
+deployment (which holds a real key) or locally, after putting a real key in
+`orchestrator/.env`, where the committed value is the placeholder `sk-ant-...` and the server
+says so at boot rather than failing later with a 401.
 
 Architectures now persist to disk (see the runner seam above), which closes the "diagrams are
 invisible to agents" blocker. Note the browser only writes there while the orchestrator is
 running — the canvas badge reads **browser only** otherwise.
 
-**Hosting is ready and rehearsed, not yet deployed.** The Railway configuration was driven
-locally rather than reasoned about: the orchestrator was booted with `PORT` set and every
-endpoint exercised (30 checks) — the no-password interlock refuses to boot, the site and its
-built bundle are served, SPA fallback resolves while API paths still win, every data/spend
-endpoint 401s without a cookie, wrong and empty passwords are rejected, the session cookie is
-HttpOnly+SameSite=Lax, a forged cookie is rejected, the architectures round-trip and prune,
-`/run` returns 501, and logout re-locks. The Postgres backend was then verified against a real
-database, **including a restart with the data surviving** — the redeploy case it exists for.
-One bug fell out of this that no amount of reading would have: the SPA fallback used `\b` as
-its API-path boundary, which also matches before a hyphen, so `/architecture-notes` 404'd
-instead of loading the app. Fixed to a `/`-or-end boundary.
+**It is deployed and live: `https://goldensyrupos-production.up.railway.app`.** One Railway
+service (site + API), a Postgres beside it, `ANTHROPIC_API_KEY` / `OS_PASSWORD` /
+`OS_SESSION_SECRET` / `DATABASE_URL` set on the app service.
 
-What remains is the deploy itself: create the Railway service from this repo, attach a
-Postgres, set `ANTHROPIC_API_KEY` + `OS_PASSWORD` + `OS_SESSION_SECRET`. Still unproven after
-that: the first live `/architect` prompt (unchanged — it needs real credentials either way).
+Before the deploy the config was driven locally rather than reasoned about: the orchestrator
+was booted with `PORT` set and every endpoint exercised (30 checks) — the no-password
+interlock refuses to boot, the site and its built bundle are served, SPA fallback resolves
+while API paths still win, every data/spend endpoint 401s without a cookie, wrong and empty
+passwords are rejected, the session cookie is HttpOnly+SameSite=Lax, a forged cookie is
+rejected, the architectures round-trip and prune, `/run` is off, and logout re-locks. The
+Postgres backend was verified against a real database, **including a restart with the data
+surviving** — the redeploy case it exists for. One bug fell out of this that no amount of
+reading would have: the SPA fallback used `\b` as its API-path boundary, which also matches
+before a hyphen, so `/architecture-notes` 404'd instead of loading the app. Fixed to a
+`/`-or-end boundary.
+
+**The live deployment was then re-verified from outside** (9 checks against the public URL):
+`/health` 200; `/` serves the built site; `/architectures` and `/run` 401 without a cookie
+(auth runs *before* `/run`'s hosted 501, so 401 is the unauthenticated answer); `/auth/status`
+reports `{required:true,authed:false}`; a wrong password 401s with no `Set-Cookie`;
+`/architecture-notes` returns the app, so the `\b` fix holds in production; and the shipped
+bundle contains **zero** matches for `sk-ant` — the Anthropic key is not in the browser.
+The boot log reads `architectures: postgres (postgres)`, which is the only proof that the
+`DATABASE_URL` reference variable actually took.
+
+One thing the deploy surfaced that is worth knowing: Railway passes service variables to
+nixpacks as build args, so Docker warns `SecretsUsedInArgOrEnv` for `ANTHROPIC_API_KEY` and
+friends, and they land in the image's ENV metadata. That is a platform behaviour, not
+something this repo does, and it is *not* the browser bundle — `vite.config.ts` sets no
+`envPrefix`, so only `VITE_`-prefixed vars are inlined (confirmed by the bundle scan above).
+The image is private to the project; rotate the key if it ever leaves Railway.
+
+Two traps for whoever wires this up next. **Do not add Railway's "Suggested Variables"** — it
+scrapes `.env.example` and offers placeholder hosts (`intel.example.railway.app` and
+friends) that would bake dead URLs into the bundle; `VITE_CONNECTOR_READ_TOKEN` is worse,
+since a `VITE_` var is public to anyone with devtools. And **`railway.json` is only honoured
+by deploys made after it existed** — an older deployment fell back to the nixpacks default
+`npm start`, which is `vite preview`, quietly serving the static site with no API, no auth
+and no Postgres. The tell is Vite's `→ Local:` banner in the deploy log where the
+orchestrator's six boot lines should be.
+
+Still unproven: the first live `/architect` prompt (unchanged — it needs real credentials
+either way, and the hosted service now has them).
 
 Next: that first live `/architect` prompt; connect the desktop Cowork folder to keep
 `public/cowork-state.json` live; real job/trade data (seed has samples). The bigger open
