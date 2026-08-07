@@ -139,6 +139,14 @@ export type ArchBlockKind =
   | 'note'
   | 'group'
   | 'image'
+  // Generic Figma/Lucidchart-style drawing primitives — currently offered only
+  // on the Milestones canvas (see MilestoneCanvas.tsx), not the Architectures
+  // builder, but rendering support for them lives on the shared `ArchBlockNode`
+  // so the two canvases can converge later without another render rewrite.
+  | 'shape-rect'
+  | 'shape-circle'
+  | 'shape-diamond'
+  | 'freehand'
 
 /**
  * A block type Sriram defined himself: his own vocabulary, not ours. Stored on
@@ -174,6 +182,11 @@ export interface ArchBlock {
   text?: string
   /** Image source for `image` blocks. A data URL, so it survives in the JSON. */
   src?: string
+  /**
+   * Freehand pen stroke, relative to (x, y) — the stroke's own bounding box.
+   * Only set on `freehand` blocks.
+   */
+  points?: { x: number; y: number }[]
 }
 
 /** A directed connection between two blocks (maps onto a React Flow edge). */
@@ -280,8 +293,33 @@ export interface DisciplineRollup {
   status: Status
 }
 
-/** The top-level views selectable from the sidebar rail. */
-export type AppView = 'dashboard' | 'cowork' | 'architectures' | 'fitness'
+/** A single revolution pillar's dedicated nav leaf, one per `seed.ts` pillar id. */
+export type PillarViewId =
+  | 'pillar-government'
+  | 'pillar-military'
+  | 'pillar-cyber'
+  | 'pillar-finance'
+  | 'pillar-law'
+  | 'pillar-education'
+  | 'pillar-trade'
+  | 'pillar-business'
+
+/** The top-level views selectable from the sidebar nav tree. */
+export type AppView =
+  | 'dashboard'
+  | 'cowork'
+  | 'architectures'
+  | 'fitness'
+  | 'career'
+  | 'uni'
+  | 'scrapers'
+  | 'tools'
+  | 'projects-startups'
+  | 'projects-other'
+  | 'news'
+  | 'events'
+  | 'memories'
+  | PillarViewId
 
 export type RunStatus = 'queued' | 'running' | 'done' | 'failed'
 

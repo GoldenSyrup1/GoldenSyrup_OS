@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   createArchitecture,
   addBlock,
+  addFreehandBlock,
   connectBlocks,
   removeBlock,
   renameBlock,
@@ -93,6 +94,43 @@ describe('React Flow projection', () => {
     expect(String(nodes[0].data.label)).toContain('API')
     expect(edges).toHaveLength(1)
     expect(edges[0].source).toBe(a.blocks[0].id)
+  })
+
+  it('drops the icon prefix for shape and freehand primitives', () => {
+    let a = createArchitecture('A', seed)
+    a = addBlock(a, 'shape-rect', 'Milestone', { x: 0, y: 0 }, seed)
+    const [node] = toFlowNodes(a)
+    expect(node.data.label).toBe('Milestone')
+  })
+})
+
+describe('addFreehandBlock', () => {
+  it('derives a bounding box and re-bases points relative to it', () => {
+    const a = addFreehandBlock(
+      createArchitecture('A', seed),
+      [
+        { x: 100, y: 50 },
+        { x: 120, y: 80 },
+        { x: 90, y: 90 },
+      ],
+      seed,
+    )
+    expect(a.blocks).toHaveLength(1)
+    const block = a.blocks[0]
+    expect(block.kind).toBe('freehand')
+    // min x=90, min y=50, padded by 4 on each side.
+    expect(block.x).toBe(86)
+    expect(block.y).toBe(46)
+    expect(block.width).toBe(120 - 90 + 8)
+    expect(block.height).toBe(90 - 50 + 8)
+    // First point re-based: (100-90+4, 50-50+4) = (14, 4).
+    expect(block.points?.[0]).toEqual({ x: 14, y: 4 })
+  })
+
+  it('is a no-op for a degenerate stroke (0 or 1 points)', () => {
+    const a = createArchitecture('A', seed)
+    expect(addFreehandBlock(a, [], seed)).toBe(a)
+    expect(addFreehandBlock(a, [{ x: 1, y: 1 }], seed)).toBe(a)
   })
 })
 
@@ -186,6 +224,18 @@ describe('custom kinds', () => {
     const fresh = createArchitecture('Next', seed + 1, a.kinds)
     expect(fresh.kinds).toHaveLength(1)
     expect(createArchitecture('Bare', seed + 2).kinds).toBeUndefined()
+  })
+
+  it('excludes Milestones-only drawing primitives from the Architectures toolbar', () => {
+    const a = createArchitecture('K', seed)
+    const ids = availableKinds(a).map((k) => k.id)
+    expect(ids).not.toContain('shape-rect')
+    expect(ids).not.toContain('shape-circle')
+    expect(ids).not.toContain('shape-diamond')
+    expect(ids).not.toContain('freehand')
+    // They still resolve/render correctly when a block uses one — just not
+    // offered as an "Add block" toolbar button.
+    expect(resolveKind(a, 'shape-rect').label).toBe('Rectangle')
   })
 })
 

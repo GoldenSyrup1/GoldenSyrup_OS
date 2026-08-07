@@ -1,17 +1,12 @@
-import { contacts, milestones, jobs, trades } from '../data/seed'
 import { aggregateProgress, statusBreakdown } from '../lib/util'
-import { useLiveData } from '../hooks/useLiveData'
+import type { LiveData } from '../hooks/useLiveData'
+import type { CommandConsole as CommandConsoleApi } from '../hooks/useCommandConsole'
+import type { MilestoneBoardApi } from '../hooks/useMilestoneBoard'
 import { Card, SectionTitle } from '../components/Card'
 import PillarGrid from '../components/PillarGrid'
-import ProjectGrid from '../components/ProjectGrid'
-import RelationshipMap from '../components/RelationshipMap'
 import ProgressRing from '../components/ProgressRing'
 import RadarChart from '../components/RadarChart'
-import Timeline from '../components/Timeline'
-import ContactPanel from '../components/ContactPanel'
-import JobBoard from '../components/JobBoard'
-import EthTracker from '../components/EthTracker'
-import ActivityFeed from '../components/ActivityFeed'
+import MilestoneCanvas from '../components/MilestoneCanvas'
 import CommandConsole from '../components/CommandConsole'
 
 const STATE_BADGE: Record<string, { label: string; color: string }> = {
@@ -25,13 +20,29 @@ function formatUpdated(ts: number | null): string {
   return new Date(ts).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function DashboardView() {
-  const { pillars, projects, activity, ethPrice, state, lastUpdated, refreshing, refresh } =
-    useLiveData()
+/**
+ * Chat-centric per design/wireframes/01-main-dashboard.png: Chat Window up top,
+ * 8 Pillars grid, then Milestones. `live` and `console` are single instances
+ * owned by App (not re-instantiated here) so the global Statistics rail and
+ * per-pillar detail pages see the same data.
+ *
+ * Project Dashboards / Relationship Map / ETH Tracker / Job Board / Activity
+ * Feed dropped from this view per Sriram's call — they'll come back once he
+ * designs where each belongs in the new nav tree (Projects, Career, etc.).
+ */
+export default function DashboardView({
+  live,
+  consoleApi,
+  milestoneBoard,
+}: {
+  live: LiveData
+  consoleApi: CommandConsoleApi
+  milestoneBoard: MilestoneBoardApi
+}) {
+  const { pillars, projects, state, lastUpdated, refreshing, refresh } = live
   const pillarProgress = aggregateProgress(pillars)
   const projectBreakdown = statusBreakdown(projects)
   const badge = STATE_BADGE[state]
-  const now = new Date().toISOString()
 
   return (
     <div>
@@ -73,8 +84,8 @@ export default function DashboardView() {
       </header>
 
       <section className="mb-8 animate-fade-in">
-        <SectionTitle>⌨️ Command Console</SectionTitle>
-        <CommandConsole projects={projects} />
+        <SectionTitle>💬 Chat</SectionTitle>
+        <CommandConsole projects={projects} consoleApi={consoleApi} milestoneBoard={milestoneBoard} />
       </section>
 
       <section className="mb-8 animate-fade-in">
@@ -88,46 +99,12 @@ export default function DashboardView() {
       </section>
 
       <section className="mb-8 animate-fade-in">
-        <SectionTitle>Project Dashboards</SectionTitle>
-        <ProjectGrid projects={projects} />
+        <SectionTitle>Milestones</SectionTitle>
+        <MilestoneCanvas api={milestoneBoard} />
       </section>
-
-      <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <section>
-          <SectionTitle>Relationship Map</SectionTitle>
-          <RelationshipMap contacts={contacts} projects={projects} />
-          <div className="mt-3">
-            <ContactPanel contacts={contacts} projects={projects} />
-          </div>
-        </section>
-
-        <section>
-          <SectionTitle>Live Activity (claude_connector)</SectionTitle>
-          <ActivityFeed items={activity} />
-        </section>
-      </div>
-
-      <section className="mb-8">
-        <SectionTitle>Job Search</SectionTitle>
-        <JobBoard jobs={jobs} />
-      </section>
-
-      <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <section>
-          <SectionTitle>ETH Trades</SectionTitle>
-          <EthTracker trades={trades} price={ethPrice} />
-        </section>
-
-        <section>
-          <SectionTitle>Hackathons & Milestones</SectionTitle>
-          <Card>
-            <Timeline milestones={milestones} now={now} />
-          </Card>
-        </section>
-      </div>
 
       <footer className="mt-10 border-t border-ink-700 pt-4 text-center text-[11px] text-gray-600">
-        Data: claude_connector memory · GoldenSyrup_Intel signal · CoinGecko (ETH) · manual inputs
+        Data: claude_connector memory · GoldenSyrup_Intel signal · manual inputs
       </footer>
     </div>
   )

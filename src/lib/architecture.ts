@@ -14,6 +14,10 @@ export const BLOCK_KINDS: Record<ArchBlockKind, { label: string; color: string; 
   note: { label: 'Note', color: '#8b949e', icon: '📝' },
   group: { label: 'Group', color: '#6e7681', icon: '🗂️' },
   image: { label: 'Image', color: '#f78166', icon: '🖼️' },
+  'shape-rect': { label: 'Rectangle', color: '#58a6ff', icon: '▭' },
+  'shape-circle': { label: 'Circle', color: '#3fb950', icon: '⬤' },
+  'shape-diamond': { label: 'Diamond', color: '#e0a020', icon: '◆' },
+  freehand: { label: 'Pen', color: '#a371f7', icon: '✏️' },
 }
 
 /** Palette offered by the colour picker. Readable on the dark canvas. */
@@ -34,11 +38,24 @@ export const DEFAULT_SIZES: Record<string, { width: number; height: number }> = 
   group: { width: 320, height: 220 },
   note: { width: 180, height: 90 },
   image: { width: 200, height: 140 },
+  'shape-rect': { width: 140, height: 90 },
+  'shape-circle': { width: 130, height: 130 },
+  'shape-diamond': { width: 170, height: 170 },
 }
 
 function isBuiltInKind(kind: string): kind is ArchBlockKind {
   return kind in BLOCK_KINDS
 }
+
+/**
+ * Drawing primitives are registered in `BLOCK_KINDS` (so `resolveKind` /
+ * `toFlowNodes` know how to render them) but deliberately excluded from
+ * `availableKinds()` below — that's what the Architectures view's "Add block"
+ * toolbar draws from, and these are offered only via MilestoneCanvas's own
+ * fixed toolbar. Keeps "shapes + pen on Milestones only, not Architectures"
+ * true even though both canvases share this same rendering engine.
+ */
+const CANVAS_PRIMITIVE_KINDS: ReadonlySet<string> = new Set(['shape-rect', 'shape-circle', 'shape-diamond', 'freehand'])
 
 /**
  * Resolve a block's kind to its visual identity, whether it is one of ours or
@@ -56,7 +73,9 @@ export function resolveKind(
 
 /** Every kind available on this diagram: the built-ins plus Sriram's own. */
 export function availableKinds(arch: Architecture): ArchKindDef[] {
-  const builtIns = (Object.keys(BLOCK_KINDS) as ArchBlockKind[]).map((id) => ({ id, ...BLOCK_KINDS[id] }))
+  const builtIns = (Object.keys(BLOCK_KINDS) as ArchBlockKind[])
+    .filter((id) => !CANVAS_PRIMITIVE_KINDS.has(id))
+    .map((id) => ({ id, ...BLOCK_KINDS[id] }))
   return [...builtIns, ...(arch.kinds ?? [])]
 }
 
@@ -101,6 +120,41 @@ export function addBlock(
     x: pos.x,
     y: pos.y,
     ...(size ?? {}),
+  }
+  return touch({ ...arch, blocks: [...arch.blocks, block] }, seed)
+}
+
+/**
+ * Commit a freehand pen stroke. `points` are absolute canvas coordinates as
+ * captured while dragging; this derives the bounding box and re-bases them
+ * relative to it, the same convention every other block's geometry follows.
+ */
+export function addFreehandBlock(
+  arch: Architecture,
+  points: { x: number; y: number }[],
+  seed: number,
+  color = BLOCK_KINDS.freehand.color,
+): Architecture {
+  if (points.length < 2) return arch
+  const xs = points.map((p) => p.x)
+  const ys = points.map((p) => p.y)
+  const minX = Math.min(...xs)
+  const minY = Math.min(...ys)
+  // A couple of px of padding so the stroke doesn't clip flush against the
+  // node's edge.
+  const pad = 4
+  const width = Math.max(...xs) - minX + pad * 2
+  const height = Math.max(...ys) - minY + pad * 2
+  const block: ArchBlock = {
+    id: nextId('block', seed),
+    kind: 'freehand',
+    label: '',
+    x: minX - pad,
+    y: minY - pad,
+    width,
+    height,
+    color,
+    points: points.map((p) => ({ x: p.x - minX + pad, y: p.y - minY + pad })),
   }
   return touch({ ...arch, blocks: [...arch.blocks, block] }, seed)
 }
@@ -419,15 +473,42 @@ export function toFlowNodes(arch: Architecture): Node[] {
     const color = b.color ?? kind.color
     const isGroup = b.kind === 'group'
     const isImage = b.kind === 'image'
+    const isFreehand = b.kind === 'freehand'
+    const isShapeRect = b.kind === 'shape-rect'
+    const isShapeCircle = b.kind === 'shape-circle'
+    const isShapeDiamond = b.kind === 'shape-diamond'
+    const isShape = isShapeRect || isShapeCircle || isShapeDiamond
+    // Bare canvas primitives skip the default box chrome — a freehand stroke
+    // draws its own line, and a shape's fill/outline stands on its own without
+    // the usual icon-plus-label block styling.
+    const bare = isShape || isFreehand
+
+    // A circle/diamond's clip-path only clips the OUTER box — a label centred
+    // with the default flat padding still lays out at full box width, so it
+    // overflows the diamond's taper and gets chopped mid-line rather than
+    // wrapping inside it. Padding percentages don't fix this (CSS resolves
+    // them against the *containing* block's width, not this element's own),
+    // so this insets by the actual pixel size instead, computed to match each
+    // shape's largest axis-aligned inscribed rectangle: 50% of each dimension
+    // for a diamond, ~70.7% (1/√2) for a circle.
+    const w = b.width ?? DEFAULT_SIZES[b.kind]?.width ?? 120
+    const h = b.height ?? DEFAULT_SIZES[b.kind]?.height ?? 80
+    const shapeInset = isShapeDiamond
+      ? { top: h * 0.25, side: w * 0.25 }
+      : isShapeCircle
+        ? { top: h * 0.1464, side: w * 0.1464 }
+        : null
 
     const style: Record<string, unknown> = {
-      background: isGroup ? 'rgba(110, 118, 129, 0.08)' : '#161b22',
+      background: isFreehand ? 'transparent' : isGroup ? 'rgba(110, 118, 129, 0.08)' : isShape ? `${color}22` : '#161b22',
       color: '#e6edf3',
-      border: `1.5px solid ${color}`,
-      borderRadius: 8,
+      border: isFreehand ? 'none' : `1.5px solid ${color}`,
+      borderRadius: isShapeCircle ? '50%' : isShapeRect ? 4 : 8,
       fontSize: 12,
-      padding: isImage ? 0 : 6,
-      minWidth: 120,
+      boxSizing: 'border-box',
+      padding: isImage || isFreehand ? 0 : shapeInset ? `${shapeInset.top}px ${shapeInset.side}px` : 6,
+      minWidth: bare ? 0 : 120,
+      ...(isShapeDiamond ? { clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' } : {}),
       ...(b.width ? { width: b.width } : {}),
       ...(b.height ? { height: b.height } : {}),
     }
@@ -445,7 +526,7 @@ export function toFlowNodes(arch: Architecture): Node[] {
       id: b.id,
       type: 'arch',
       position: { x: b.x, y: b.y },
-      data: { label: isGroup || isImage ? b.label : `${kind.icon} ${b.label}`, block: b, color },
+      data: { label: isGroup || isImage || bare ? b.label : `${kind.icon} ${b.label}`, block: b, color },
       style,
       ...(b.parentId ? { parentId: b.parentId, extent: 'parent' as const } : {}),
     }

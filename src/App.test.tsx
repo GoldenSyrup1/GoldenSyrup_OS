@@ -10,35 +10,60 @@ beforeEach(() => {
   )
 })
 
+/** The nav drawer is closed by default and hidden via aria-hidden, so tests
+ * that need to click a nav leaf must open it via the top nav toggle first. */
+function openSidebar() {
+  fireEvent.click(screen.getByRole('button', { name: /toggle navigation/i }))
+}
+
 describe('<App />', () => {
-  it('renders the command-centre shell and all core sections', () => {
+  it('renders the shell and the chat-centric dashboard sections', () => {
     render(<App />)
-    // Appears in the sidebar brand and the dashboard header.
+    // Appears in the top nav brand and the dashboard header.
     expect(screen.getAllByText(/GoldenSyrup OS/i).length).toBeGreaterThan(0)
-    expect(screen.getByText(/Command Console/i)).toBeInTheDocument()
-    expect(screen.getByText(/Startups \/ Projects/i)).toBeInTheDocument()
+    expect(screen.getByText(/Chat/i)).toBeInTheDocument()
     expect(screen.getByText(/8 Revolution Pillars/i)).toBeInTheDocument()
-    expect(screen.getByText(/Project Dashboards/i)).toBeInTheDocument()
-    expect(screen.getByText(/Relationship Map/i)).toBeInTheDocument()
-    // "Job Search" appears twice: the section title and the Command Console tree leaf.
-    expect(screen.getAllByText(/Job Search/i).length).toBeGreaterThan(0)
-    expect(screen.getByText(/ETH Trades/i)).toBeInTheDocument()
+    expect(screen.getByText(/Milestones/i)).toBeInTheDocument()
+    // Dropped from the main dashboard per the redesign — no longer rendered here.
+    expect(screen.queryByText(/Project Dashboards/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Relationship Map/i)).not.toBeInTheDocument()
   })
 
-  it('falls back to the seed layer and shows known projects + jobs', () => {
+  it('opens the nav drawer and switches views', () => {
     render(<App />)
-    expect(screen.getAllByText(/WEPort/i).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/GoldenSyrup_Intel/i).length).toBeGreaterThan(0)
-    expect(screen.getByText(/Atlassian/i)).toBeInTheDocument()
-  })
-
-  it('switches views from the sidebar rail', () => {
-    render(<App />)
-    fireEvent.click(screen.getByRole('button', { name: /Architectures/i }))
+    openSidebar()
+    fireEvent.click(screen.getByRole('button', { name: /^Architectures$/i }))
     expect(screen.getByText(/\+ New Architecture/i)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /Cowork/i }))
+    openSidebar()
+    fireEvent.click(screen.getByRole('button', { name: /^Cowork$/i }))
     // The Cowork composer is always present regardless of connection state.
     expect(screen.getByText(/Assign a task to Cowork/i)).toBeInTheDocument()
+  })
+
+  it('expands the Pillars branch and navigates to a pillar detail page', () => {
+    render(<App />)
+    openSidebar()
+    fireEvent.click(screen.getByRole('button', { name: /^Pillars$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^Finance$/i }))
+    expect(screen.getByRole('heading', { name: 'Finance' })).toBeInTheDocument()
+  })
+
+  it('opens the statistics rail from the top nav', () => {
+    render(<App />)
+    // The rail is always in the DOM (a CSS-transformed drawer) so it's toggled
+    // via aria-hidden rather than text presence/absence.
+    const rail = screen.getByText(/Statistics \/ Tool Usage/i).closest('aside')
+    expect(rail).toHaveAttribute('aria-hidden', 'true')
+    fireEvent.click(screen.getByRole('button', { name: /toggle statistics/i }))
+    expect(rail).toHaveAttribute('aria-hidden', 'false')
+    expect(screen.getByText(/Session spend/i)).toBeInTheDocument()
+  })
+
+  it('lists tool-linked projects in the chat project selector', () => {
+    render(<App />)
+    const select = screen.getByLabelText(/project selection/i)
+    expect(select).toBeInTheDocument()
+    expect(screen.getAllByText(/WEPort/i).length).toBeGreaterThan(0)
   })
 })

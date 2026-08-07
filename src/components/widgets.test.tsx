@@ -1,9 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import RadarChart from './RadarChart'
-import Timeline from './Timeline'
 import ContactPanel from './ContactPanel'
-import type { Pillar, Milestone, Contact, Project } from '../types'
+import type { Pillar, Contact, Project } from '../types'
 
 const pillars: Pillar[] = [
   { id: 'gov', name: 'Government', status: 'live', progress: 60, nextAction: 'x' },
@@ -17,24 +16,6 @@ describe('RadarChart', () => {
     expect(screen.getByRole('img', { name: /radar/i })).toBeInTheDocument()
     expect(screen.getByText('Government')).toBeInTheDocument()
     expect(screen.getByText('Finance')).toBeInTheDocument()
-  })
-})
-
-describe('Timeline', () => {
-  const milestones: Milestone[] = [
-    { id: 'm1', title: 'Hackathon', kind: 'hackathon', date: '2026-06-30', status: 'progress' },
-    { id: 'm2', title: 'Past Event', kind: 'event', date: '2026-06-20', status: 'live' },
-  ]
-
-  it('orders milestones by date and shows relative labels', () => {
-    render(<Timeline milestones={milestones} now="2026-06-25" />)
-    expect(screen.getByText('5d ago')).toBeInTheDocument() // 06-20
-    expect(screen.getByText('in 5d')).toBeInTheDocument() // 06-30
-  })
-
-  it('handles an empty list', () => {
-    render(<Timeline milestones={[]} now="2026-06-25" />)
-    expect(screen.getByText(/no upcoming milestones/i)).toBeInTheDocument()
   })
 })
 
