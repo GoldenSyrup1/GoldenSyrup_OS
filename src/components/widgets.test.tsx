@@ -32,6 +32,14 @@ describe('ContactPanel', () => {
       followUp: 'supports post-launch',
       connectsTo: ['weport'],
     },
+    {
+      id: 'gavin',
+      name: 'Gavin Schwarz',
+      role: 'Contact',
+      relationship: 'connector',
+      connectsTo: [],
+      linkedIn: 'https://www.linkedin.com/in/example-gavin',
+    },
   ]
 
   it('opens a detail drawer on click and resolves connected project names', () => {
@@ -43,5 +51,15 @@ describe('ContactPanel', () => {
     expect(screen.getByText('supports post-launch')).toBeInTheDocument()
     // project id resolved to its display name inside the drawer
     expect(screen.getByText('WEPort')).toBeInTheDocument()
+    // No linkedIn on this contact — no link-out to render.
+    expect(screen.queryByText(/linkedin/i)).not.toBeInTheDocument()
+  })
+
+  it('renders a LinkedIn link-out only when the contact has one', () => {
+    render(<ContactPanel contacts={contacts} projects={projects} />)
+    fireEvent.click(screen.getByText('Gavin Schwarz'))
+    const link = screen.getByRole('link', { name: /open profile/i })
+    expect(link).toHaveAttribute('href', 'https://www.linkedin.com/in/example-gavin')
+    expect(link).toHaveAttribute('target', '_blank')
   })
 })

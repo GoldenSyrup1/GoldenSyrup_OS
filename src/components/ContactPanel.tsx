@@ -80,6 +80,18 @@ export default function ContactPanel({
               </Row>
               {selected.lastTouch && <Row label="Last touch">{selected.lastTouch}</Row>}
               {selected.followUp && <Row label="Follow-up">{selected.followUp}</Row>}
+              {selected.linkedIn && (
+                <Row label="LinkedIn">
+                  <a
+                    href={selected.linkedIn}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-syrup-300 hover:underline"
+                  >
+                    🔗 Open profile
+                  </a>
+                </Row>
+              )}
               <Row label="Connects to">
                 {selected.connectsTo.length === 0 ? (
                   <span className="text-gray-600">—</span>

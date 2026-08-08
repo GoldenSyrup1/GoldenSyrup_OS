@@ -36,6 +36,9 @@ export interface Contact {
   followUp?: string
   /** ids of projects this contact connects to. */
   connectsTo: string[]
+  /** LinkedIn profile URL — a manual link-out, not a synced connection (LinkedIn's
+   * API doesn't offer that to a personal app). Absent unless entered by hand. */
+  linkedIn?: string
 }
 
 export interface Milestone {
@@ -311,6 +314,7 @@ export type AppView =
   | 'architectures'
   | 'fitness'
   | 'career'
+  | 'connections'
   | 'uni'
   | 'scrapers'
   | 'tools'

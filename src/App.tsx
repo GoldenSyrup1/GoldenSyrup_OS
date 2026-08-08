@@ -11,6 +11,7 @@ import CoworkView from './views/CoworkView'
 import ArchitecturesView from './views/ArchitecturesView'
 import FitnessView from './views/FitnessView'
 import PillarView from './views/PillarView'
+import ConnectionsView from './views/ConnectionsView'
 import ComingSoonView from './views/ComingSoonView'
 
 const PLACEHOLDER_TITLES: Partial<Record<AppView, { title: string; icon?: string }>> = {
@@ -65,6 +66,7 @@ export default function App() {
           {view === 'cowork' && <CoworkView />}
           {view === 'architectures' && <ArchitecturesView />}
           {view === 'fitness' && <FitnessView />}
+          {view === 'connections' && <ConnectionsView projects={live.projects} />}
           {view.startsWith('pillar-') && <PillarView view={view as PillarViewId} pillars={live.pillars} />}
           {placeholder && <ComingSoonView title={placeholder.title} icon={placeholder.icon} />}
         </div>

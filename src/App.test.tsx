@@ -66,4 +66,13 @@ describe('<App />', () => {
     expect(select).toBeInTheDocument()
     expect(screen.getAllByText(/WEPort/i).length).toBeGreaterThan(0)
   })
+
+  it('navigates to Connections and shows real contact content, not a placeholder', () => {
+    render(<App />)
+    openSidebar()
+    fireEvent.click(screen.getByRole('button', { name: /^Connections$/i }))
+    expect(screen.getByText(/relationship map/i)).toBeInTheDocument()
+    expect(screen.getByText('Peter Ratcliffe')).toBeInTheDocument()
+    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
+  })
 })

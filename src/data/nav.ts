@@ -44,6 +44,7 @@ export const NAV_TREE: NavItem[] = [
     ],
   },
   { id: 'career', label: 'Career', icon: '💼' },
+  { id: 'connections', label: 'Connections', icon: '🔗' },
   { id: 'uni', label: 'Uni', icon: '🎓' },
   { id: 'fitness', label: 'Fitness', icon: '💪' },
   { id: 'architectures', label: 'Architectures', icon: '🧩' },

@@ -26,9 +26,10 @@ function formatUpdated(ts: number | null): string {
  * owned by App (not re-instantiated here) so the global Statistics rail and
  * per-pillar detail pages see the same data.
  *
- * Project Dashboards / Relationship Map / ETH Tracker / Job Board / Activity
- * Feed dropped from this view per Sriram's call — they'll come back once he
- * designs where each belongs in the new nav tree (Projects, Career, etc.).
+ * Project Dashboards / ETH Tracker / Job Board / Activity Feed dropped from
+ * this view per Sriram's call — they'll come back once he designs where each
+ * belongs in the new nav tree (Projects, Career, etc.). Relationship Map +
+ * ContactPanel already found their home: `views/ConnectionsView.tsx`.
  */
 export default function DashboardView({
   live,
